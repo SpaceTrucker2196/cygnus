@@ -33,6 +33,9 @@ public final class WorkspaceStore {
     public var selectedNode: String?
     public var searchText: String = ""
     public var viewMode: ViewMode = .outline
+    /// Chart third-party (non-system) external modules. System
+    /// modules are never charted.
+    public var showExternalModules = false
 
     private let engine: any GraphEngine
     private let persistence: WorkspacePersistence
