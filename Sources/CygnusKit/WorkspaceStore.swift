@@ -59,18 +59,22 @@ public final class WorkspaceStore {
             displayName: url.lastPathComponent,
             pathHint: url.path,
             bookmark: Data())
-        do {
-            repo.bookmark = try RepoAccess.bookmark(for: url)
-            repos.append(repo)
-            states[repo.id] = .idle
-            try persistence.save(repos)
-            selectedRepo = repo.id
-            analyze(repo.id)
-        } catch {
+        // Bookmark creation can fail in odd launch contexts; if the
+        // folder is still directly readable, proceed without one —
+        // access lasts this session and relink covers the rest.
+        repo.bookmark = (try? RepoAccess.bookmark(for: url)) ?? Data()
+        guard !repo.bookmark.isEmpty
+                || FileManager.default.isReadableFile(atPath: url.path) else {
             repos.append(repo)
             selectedRepo = repo.id
-            states[repo.id] = .failed("Couldn't save access to this folder: \(error.localizedDescription)")
+            states[repo.id] = .failed("Couldn't get access to \(url.path)")
+            return
         }
+        repos.append(repo)
+        states[repo.id] = .idle
+        try? persistence.save(repos)
+        selectedRepo = repo.id
+        analyze(repo.id)
     }
 
     /// Remove the registration only — never touches the folder.
@@ -107,11 +111,16 @@ public final class WorkspaceStore {
         tasks[id] = Task { [weak self] in
             guard let self else { return }
             do {
-                guard let (url, _) = try? RepoAccess.resolve(repo.bookmark),
-                      FileManager.default.fileExists(atPath: url.path) else {
+                // Prefer the bookmark; fall back to the raw path when
+                // the folder is still directly readable (bookmark
+                // failed to create, or non-sandboxed contexts).
+                let resolved = (try? RepoAccess.resolve(repo.bookmark))?.url
+                    ?? URL(fileURLWithPath: repo.pathHint)
+                guard FileManager.default.isReadableFile(atPath: resolved.path) else {
                     self.states[id] = .needsRelink
                     return
                 }
+                let url = resolved
                 try await RepoAccess.withAccess(to: url) { url in
                     for try await event in engine.analyze(repoAt: url) {
                         await self.apply(event, to: id)
