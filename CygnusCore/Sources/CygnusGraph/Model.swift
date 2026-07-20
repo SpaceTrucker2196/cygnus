@@ -158,16 +158,19 @@ public struct Entity: Hashable, Codable, Sendable {
 }
 
 /// State of an entity over a revision interval. `validTo == nil`
-/// means current.
+/// means current. `id` is the store's version-row id — provenance
+/// links attach to it.
 public struct EntityVersion: Hashable, Codable, Sendable {
+    public let id: Int64
     public let entity: EntityID
     public let validFrom: RevisionID
     public let validTo: RevisionID?
     public let name: String
     public let properties: PropertyBag
     public let anchors: [SourceAnchor]
-    public init(entity: EntityID, validFrom: RevisionID, validTo: RevisionID?,
+    public init(id: Int64, entity: EntityID, validFrom: RevisionID, validTo: RevisionID?,
                 name: String, properties: PropertyBag, anchors: [SourceAnchor]) {
+        self.id = id
         self.entity = entity
         self.validFrom = validFrom
         self.validTo = validTo
