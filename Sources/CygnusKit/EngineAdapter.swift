@@ -42,7 +42,8 @@ public struct WorkspaceGraphEngine: GraphEngine {
                     continuation.yield(.partialCounts(entities: result.entityCount,
                                                       edges: result.relationshipCount))
                     continuation.yield(.phase("projecting"))
-                    let snapshot = try Self.snapshot(from: await workspace.store)
+                    let snapshot = try Self.snapshot(from: await workspace.store,
+                                                     repository: repoID)
                     continuation.yield(.finished(snapshot))
                     continuation.finish()
                 } catch {
@@ -53,12 +54,13 @@ public struct WorkspaceGraphEngine: GraphEngine {
         }
     }
 
-    /// Project the current graph into a render-ready snapshot:
-    /// containment + declaration + import edges and every entity they
-    /// touch.
-    static func snapshot(from store: SQLiteGraphStore) throws -> GraphSnapshot {
+    /// Project one repository's current graph into a render-ready
+    /// snapshot: containment + declaration + import edges owned by
+    /// the repo, plus the shared module entities they point at. The
+    /// workspace stores many repos; a snapshot never mixes them.
+    static func snapshot(from store: SQLiteGraphStore,
+                         repository: RepositoryID) throws -> GraphSnapshot {
         let kinds: [RelationshipKind] = [.containsPhysical, .declares, .imports]
-        var edges: [GraphSnapshot.Edge] = []
         var entityIDs = Set<EntityID>()
         var rawEdges: [Relationship] = []
         for kind in kinds {
@@ -70,9 +72,14 @@ public struct WorkspaceGraphEngine: GraphEngine {
         }
 
         let entities = try store.entities(ids: Array(entityIDs), at: .current)
-        let keyByID = Dictionary(uniqueKeysWithValues: entities.map { ($0.entity.id, $0.entity.stableKey.raw) })
+        let ownedIDs = Set(entities.filter { $0.entity.repository == repository }
+            .map(\.entity.id))
+        let keptEdges = rawEdges.filter { ownedIDs.contains($0.source) }
+        let reachedIDs = Set(keptEdges.map(\.target)).union(ownedIDs)
+        let kept = entities.filter { reachedIDs.contains($0.entity.id) }
+        let keyByID = Dictionary(uniqueKeysWithValues: kept.map { ($0.entity.id, $0.entity.stableKey.raw) })
 
-        let nodes = entities
+        let nodes = kept
             .map { resolved in
                 GraphSnapshot.Node(
                     id: resolved.entity.stableKey.raw,
@@ -82,7 +89,8 @@ public struct WorkspaceGraphEngine: GraphEngine {
             }
             .sorted { $0.id < $1.id }
 
-        for edge in rawEdges {
+        var edges: [GraphSnapshot.Edge] = []
+        for edge in keptEdges {
             guard let from = keyByID[edge.source], let to = keyByID[edge.target] else { continue }
             edges.append(GraphSnapshot.Edge(from: from, to: to, kind: edge.kind.rawValue))
         }
