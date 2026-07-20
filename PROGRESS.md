@@ -17,3 +17,9 @@
 - E0 spike (storage): interval-schema benchmark green — 43 µs current
   neighborhood lookups, 171 ms for a 10k-fact revision commit at 1M
   rows. Numbers in docs/schema.md. E0 complete.
+- E1 complete: `GraphStore` protocol + assertion types in CygnusGraph
+  (Observation moved into the canonical model), full schema as GRDB
+  migrations, `SQLiteGraphStore` with one-transaction revision
+  commits, upsert/dedupe semantics, FTS name search, provenance
+  links. 16 tests green incl. revision isolation, time travel, and
+  atomic rollback on unknown-entity assertion.

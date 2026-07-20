@@ -1,0 +1,366 @@
+import Foundation
+import GRDB
+import CygnusGraph
+
+// GraphStore implementation over GRDB. Append-only: the only UPDATEs
+// in this file close valid_to intervals; commit() is one transaction.
+
+public final class SQLiteGraphStore: GraphStore, Sendable {
+    private let db: any DatabaseWriter
+
+    public static func inMemory() throws -> SQLiteGraphStore {
+        try SQLiteGraphStore(db: DatabaseQueue())
+    }
+
+    public static func onDisk(at url: URL) throws -> SQLiteGraphStore {
+        try SQLiteGraphStore(db: DatabasePool(path: url.path))
+    }
+
+    private init(db: any DatabaseWriter) throws {
+        self.db = db
+        try Schema.migrator().migrate(db)
+    }
+
+    // MARK: - Repositories & snapshots
+
+    public func registerRepository(_ id: RepositoryID, displayName: String) throws {
+        try db.write { db in
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO repositories (id, display_name) VALUES (?, ?)",
+                arguments: [id.raw, displayName])
+        }
+    }
+
+    public func recordSnapshot(repository: RepositoryID, sourceRef: String?) throws -> SnapshotID {
+        try db.write { db in
+            try db.execute(
+                sql: "INSERT INTO snapshots (repository_id, source_ref, created_at) VALUES (?, ?, ?)",
+                arguments: [repository.raw, sourceRef, iso8601Now()])
+            return SnapshotID(db.lastInsertedRowID)
+        }
+    }
+
+    public func recordObservations(_ observations: [Observation],
+                                   snapshot: SnapshotID) throws -> [ObservationID] {
+        try db.write { db in
+            let stmt = try db.makeStatement(sql: """
+                INSERT INTO observations
+                    (kind, snapshot_id, path, blob_hash, range, payload, extractor, extractor_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """)
+            var ids: [ObservationID] = []
+            ids.reserveCapacity(observations.count)
+            for obs in observations {
+                try stmt.execute(arguments: [
+                    obs.kind.rawValue, snapshot.raw, obs.file.path, obs.file.blob.raw,
+                    obs.file.range.map { try? CanonicalJSON.encode($0) } ?? nil,
+                    try CanonicalJSON.encode(obs.payload),
+                    obs.extractor.name, obs.extractor.version,
+                ])
+                ids.append(ObservationID(db.lastInsertedRowID))
+            }
+            return ids
+        }
+    }
+
+    // MARK: - Revisions
+
+    public func currentRevision() throws -> RevisionID? {
+        try db.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM revisions").map(RevisionID.init)
+        }
+    }
+
+    public func revisions() throws -> [RevisionInfo] {
+        try db.read { db in
+            try Row.fetchAll(db, sql: "SELECT id, note, created_at FROM revisions ORDER BY id").map {
+                RevisionInfo(id: RevisionID($0["id"]),
+                             note: $0["note"],
+                             createdAt: parseISO8601($0["created_at"]) ?? .distantPast)
+            }
+        }
+    }
+
+    @discardableResult
+    public func commit(_ changes: RevisionChanges, note: String? = nil) throws -> RevisionID {
+        try db.write { db in
+            try db.execute(sql: "INSERT INTO revisions (note, created_at) VALUES (?, ?)",
+                           arguments: [note, iso8601Now()])
+            let rev = db.lastInsertedRowID
+
+            for assertion in changes.entities {
+                try apply(assertion, at: rev, db)
+            }
+            for key in changes.retractEntities {
+                try retractEntity(key, at: rev, db)
+            }
+            for assertion in changes.relationships {
+                try apply(assertion, at: rev, db)
+            }
+            for relID in changes.retractRelationships {
+                try db.execute(literal: """
+                    UPDATE relationships SET valid_to = \(rev)
+                    WHERE id = \(relID) AND valid_to IS NULL
+                    """)
+                if db.changesCount == 0 {
+                    throw GraphStoreError.unknownRelationship(relID)
+                }
+            }
+            return RevisionID(rev)
+        }
+    }
+
+    private func apply(_ assertion: EntityAssertion, at rev: Int64, _ db: Database) throws {
+        let props = try CanonicalJSON.encode(assertion.properties)
+        let anchors = try CanonicalJSON.encode(assertion.anchors)
+
+        var entityID = try Int64.fetchOne(
+            db, sql: "SELECT id FROM entities WHERE stable_key = ?",
+            arguments: [assertion.stableKey.raw])
+
+        if entityID == nil {
+            try db.execute(
+                sql: "INSERT INTO entities (stable_key, kind, repository_id, first_seen_rev) VALUES (?, ?, ?, ?)",
+                arguments: [assertion.stableKey.raw, assertion.kind.rawValue,
+                            assertion.repository?.raw, rev])
+            entityID = db.lastInsertedRowID
+        }
+        guard let entityID else { return }
+
+        let current = try Row.fetchOne(db, sql: """
+            SELECT id, name, properties, anchors FROM entity_versions
+            WHERE entity_id = ? AND valid_to IS NULL
+            """, arguments: [entityID])
+
+        let versionID: Int64
+        if let current,
+           current["name"] == assertion.name,
+           current["properties"] == props,
+           current["anchors"] == anchors {
+            versionID = current["id"]        // unchanged — no new row
+        } else {
+            if let current {
+                try db.execute(literal: """
+                    UPDATE entity_versions SET valid_to = \(rev)
+                    WHERE id = \(current["id"] as Int64)
+                    """)
+                try db.execute(sql: "DELETE FROM entity_search WHERE version_id = ?",
+                               arguments: [current["id"] as Int64])
+            }
+            try db.execute(
+                sql: "INSERT INTO entity_versions (entity_id, valid_from, valid_to, name, properties, anchors) VALUES (?, ?, NULL, ?, ?, ?)",
+                arguments: [entityID, rev, assertion.name, props, anchors])
+            versionID = db.lastInsertedRowID
+            try db.execute(sql: "INSERT INTO entity_search (name, version_id) VALUES (?, ?)",
+                           arguments: [assertion.name, versionID])
+        }
+
+        try link(observations: assertion.supportedBy, factKind: "entity_version",
+                 factID: versionID, db)
+    }
+
+    private func retractEntity(_ key: StableKey, at rev: Int64, _ db: Database) throws {
+        guard let entityID = try Int64.fetchOne(
+            db, sql: "SELECT id FROM entities WHERE stable_key = ?", arguments: [key.raw])
+        else { throw GraphStoreError.unknownEntity(key) }
+
+        if let versionID = try Int64.fetchOne(db, sql: """
+            SELECT id FROM entity_versions WHERE entity_id = ? AND valid_to IS NULL
+            """, arguments: [entityID]) {
+            try db.execute(literal: """
+                UPDATE entity_versions SET valid_to = \(rev) WHERE id = \(versionID)
+                """)
+            try db.execute(sql: "DELETE FROM entity_search WHERE version_id = ?",
+                           arguments: [versionID])
+        }
+    }
+
+    private func apply(_ assertion: RelationshipAssertion, at rev: Int64, _ db: Database) throws {
+        guard let sourceID = try Int64.fetchOne(
+            db, sql: "SELECT id FROM entities WHERE stable_key = ?",
+            arguments: [assertion.source.raw])
+        else { throw GraphStoreError.unknownEntity(assertion.source) }
+        guard let targetID = try Int64.fetchOne(
+            db, sql: "SELECT id FROM entities WHERE stable_key = ?",
+            arguments: [assertion.target.raw])
+        else { throw GraphStoreError.unknownEntity(assertion.target) }
+
+        let props = try CanonicalJSON.encode(assertion.properties)
+
+        let relID: Int64
+        if let existing = try Int64.fetchOne(db, sql: """
+            SELECT id FROM relationships
+            WHERE source_id = ? AND target_id = ? AND kind = ? AND layer = ?
+              AND properties = ? AND valid_to IS NULL
+            """, arguments: [sourceID, targetID, assertion.kind.rawValue,
+                             assertion.layer.rawValue, props]) {
+            relID = existing                 // dedupe — no new row
+        } else {
+            try db.execute(
+                sql: "INSERT INTO relationships (kind, source_id, target_id, layer, valid_from, valid_to, properties) VALUES (?, ?, ?, ?, ?, NULL, ?)",
+                arguments: [assertion.kind.rawValue, sourceID, targetID,
+                            assertion.layer.rawValue, rev, props])
+            relID = db.lastInsertedRowID
+        }
+
+        try link(observations: assertion.supportedBy, factKind: "relationship",
+                 factID: relID, db)
+    }
+
+    private func link(observations: [ObservationID], factKind: String,
+                      factID: Int64, _ db: Database) throws {
+        guard !observations.isEmpty else { return }
+        let stmt = try db.makeStatement(sql: """
+            INSERT OR IGNORE INTO provenance (fact_kind, fact_id, observation_id)
+            VALUES (?, ?, ?)
+            """)
+        for obs in observations {
+            try stmt.execute(arguments: [factKind, factID, obs.raw])
+        }
+    }
+
+    // MARK: - Reads
+
+    public func entity(stableKey: StableKey, at query: RevisionQuery) throws -> ResolvedEntity? {
+        try db.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT e.id AS eid, e.stable_key, e.kind, e.repository_id, e.first_seen_rev,
+                       v.id AS vid, v.valid_from, v.valid_to, v.name, v.properties, v.anchors
+                FROM entities e JOIN entity_versions v ON v.entity_id = e.id
+                WHERE e.stable_key = ? AND \(Self.intervalPredicate(query, alias: "v"))
+                """, arguments: [stableKey.raw]).map(Self.resolvedEntity)
+        }
+    }
+
+    public func entities(kind: EntityKind, at query: RevisionQuery) throws -> [ResolvedEntity] {
+        try db.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT e.id AS eid, e.stable_key, e.kind, e.repository_id, e.first_seen_rev,
+                       v.id AS vid, v.valid_from, v.valid_to, v.name, v.properties, v.anchors
+                FROM entities e JOIN entity_versions v ON v.entity_id = e.id
+                WHERE e.kind = ? AND \(Self.intervalPredicate(query, alias: "v"))
+                ORDER BY e.stable_key
+                """, arguments: [kind.rawValue]).map(Self.resolvedEntity)
+        }
+    }
+
+    public func relationships(from source: StableKey, kind: RelationshipKind?,
+                              at query: RevisionQuery) throws -> [Relationship] {
+        try fetchRelationships(endpoint: "source_id", key: source, kind: kind, at: query)
+    }
+
+    public func relationships(to target: StableKey, kind: RelationshipKind?,
+                              at query: RevisionQuery) throws -> [Relationship] {
+        try fetchRelationships(endpoint: "target_id", key: target, kind: kind, at: query)
+    }
+
+    private func fetchRelationships(endpoint: String, key: StableKey,
+                                    kind: RelationshipKind?,
+                                    at query: RevisionQuery) throws -> [Relationship] {
+        try db.read { db in
+            guard let entityID = try Int64.fetchOne(
+                db, sql: "SELECT id FROM entities WHERE stable_key = ?", arguments: [key.raw])
+            else { return [] }
+
+            var sql = """
+                SELECT id, kind, source_id, target_id, layer, valid_from, valid_to, properties
+                FROM relationships
+                WHERE \(endpoint) = ? AND \(Self.intervalPredicate(query, alias: "relationships"))
+                """
+            var arguments: StatementArguments = [entityID]
+            if let kind {
+                sql += " AND kind = ?"
+                _ = arguments.append(contentsOf: [kind.rawValue])
+            }
+            sql += " ORDER BY id"
+            return try Row.fetchAll(db, sql: sql, arguments: arguments).map(Self.relationship)
+        }
+    }
+
+    public func searchNames(_ text: String, limit: Int) throws -> [ResolvedEntity] {
+        // FTS prefix match over current entity names.
+        let match = text
+            .components(separatedBy: .whitespaces)
+            .filter { !$0.isEmpty }
+            .map { "\"\($0.replacingOccurrences(of: "\"", with: ""))\"*" }
+            .joined(separator: " ")
+        guard !match.isEmpty else { return [] }
+        return try db.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT e.id AS eid, e.stable_key, e.kind, e.repository_id, e.first_seen_rev,
+                       v.id AS vid, v.valid_from, v.valid_to, v.name, v.properties, v.anchors
+                FROM entity_search s
+                JOIN entity_versions v ON v.id = s.version_id
+                JOIN entities e ON e.id = v.entity_id
+                WHERE entity_search MATCH ? AND v.valid_to IS NULL
+                ORDER BY rank LIMIT ?
+                """, arguments: [match, limit]).map(Self.resolvedEntity)
+        }
+    }
+
+    public func provenance(ofRelationship id: Int64) throws -> [ObservationID] {
+        try provenance(factKind: "relationship", factID: id)
+    }
+
+    public func provenance(ofEntityVersion id: Int64) throws -> [ObservationID] {
+        try provenance(factKind: "entity_version", factID: id)
+    }
+
+    private func provenance(factKind: String, factID: Int64) throws -> [ObservationID] {
+        try db.read { db in
+            try Int64.fetchAll(db, sql: """
+                SELECT observation_id FROM provenance
+                WHERE fact_kind = ? AND fact_id = ? ORDER BY observation_id
+                """, arguments: [factKind, factID]).map(ObservationID.init)
+        }
+    }
+
+    // MARK: - Row mapping
+
+    private static func intervalPredicate(_ query: RevisionQuery, alias: String) -> String {
+        switch query {
+        case .current:
+            "\(alias).valid_to IS NULL"
+        case .asOf(let rev):
+            "\(alias).valid_from <= \(rev.raw) AND (\(alias).valid_to IS NULL OR \(alias).valid_to > \(rev.raw))"
+        }
+    }
+
+    private static func resolvedEntity(_ row: Row) throws -> ResolvedEntity {
+        ResolvedEntity(
+            entity: Entity(
+                id: EntityID(row["eid"]),
+                stableKey: StableKey(row["stable_key"]),
+                kind: EntityKind(row["kind"]),
+                repository: (row["repository_id"] as String?).map(RepositoryID.init),
+                firstSeen: RevisionID(row["first_seen_rev"])),
+            version: EntityVersion(
+                id: row["vid"],
+                entity: EntityID(row["eid"]),
+                validFrom: RevisionID(row["valid_from"]),
+                validTo: (row["valid_to"] as Int64?).map(RevisionID.init),
+                name: row["name"],
+                properties: try CanonicalJSON.decode(PropertyBag.self, from: row["properties"]),
+                anchors: try CanonicalJSON.decode([SourceAnchor].self, from: row["anchors"])))
+    }
+
+    private static func relationship(_ row: Row) throws -> Relationship {
+        Relationship(
+            id: row["id"],
+            kind: RelationshipKind(row["kind"]),
+            source: EntityID(row["source_id"]),
+            target: EntityID(row["target_id"]),
+            layer: KnowledgeLayer(rawValue: row["layer"]) ?? .observed,
+            validFrom: RevisionID(row["valid_from"]),
+            validTo: (row["valid_to"] as Int64?).map(RevisionID.init),
+            properties: try CanonicalJSON.decode(PropertyBag.self, from: row["properties"]))
+    }
+}
+
+private func iso8601Now() -> String {
+    ISO8601DateFormatter().string(from: Date())
+}
+
+private func parseISO8601(_ text: String) -> Date? {
+    ISO8601DateFormatter().date(from: text)
+}
