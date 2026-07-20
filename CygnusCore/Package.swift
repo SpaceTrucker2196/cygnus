@@ -11,6 +11,14 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
         .package(url: "https://github.com/swiftlang/swift-syntax.git", "601.0.0"..<"700.0.0"),
+        .package(url: "https://github.com/ChimeHQ/SwiftTreeSitter.git", from: "0.9.0"),
+        // Grammars are pinned exact — runtime/grammar ABI churn is the
+        // known papercut (MISSION.md §5). python is held at 0.23.6:
+        // 0.25.0's manifest probes src/scanner.c with a relative path
+        // that fails under SwiftPM's manifest sandbox, dropping the
+        // external scanner and breaking the link.
+        .package(url: "https://github.com/tree-sitter/tree-sitter-python.git", exact: "0.23.6"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-c.git", exact: "0.24.2"),
     ],
     targets: [
         // Pure model. Depends on nothing; everyone depends on it.
@@ -35,8 +43,13 @@ let package = Package(
             .product(name: "SwiftSyntax", package: "swift-syntax"),
             .product(name: "SwiftParser", package: "swift-syntax"),
         ]),
-        // tree-sitter runtime + python/c grammars land here (pinned) in E0 spike.
-        .target(name: "CygnusExtractorTS", dependencies: ["CygnusGraph", "CygnusObservation"]),
+        .target(name: "CygnusExtractorTS", dependencies: [
+            "CygnusGraph",
+            "CygnusObservation",
+            .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
+            .product(name: "TreeSitterPython", package: "tree-sitter-python"),
+            .product(name: "TreeSitterC", package: "tree-sitter-c"),
+        ]),
 
         // Reads the graph, writes derived-layer facts only.
         .target(name: "CygnusDerive", dependencies: ["CygnusGraph"]),
@@ -54,5 +67,6 @@ let package = Package(
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
+        .testTarget(name: "ExtractorTSTests", dependencies: ["CygnusExtractorTS"]),
     ]
 )
