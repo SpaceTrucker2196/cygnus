@@ -1,0 +1,79 @@
+# xcodegen spec for the Cygnus macOS app. Run `xcodegen generate` to
+# produce Cygnus.xcodeproj. The .xcodeproj is gitignored — this YAML
+# is the authoritative project definition.
+
+name: Cygnus
+
+options:
+  bundleIdPrefix: io.river.cygnus
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_UPCOMING_FEATURE_EXISTENTIAL_ANY: YES
+
+packages:
+  CygnusKit:
+    path: .
+
+targets:
+  Cygnus:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - "Tests/**"
+    entitlements:
+      path: App/Cygnus.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.files.user-selected.read-only: true
+        com.apple.security.files.bookmarks.app-scope: true
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Cygnus
+        LSApplicationCategoryType: public.app-category.developer-tools
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.river.cygnus.mac
+    dependencies:
+      - package: CygnusKit
+        product: CygnusKit
+
+  CygnusTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - App/Tests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.river.cygnus.mac.tests
+    dependencies:
+      - target: Cygnus
+      - package: CygnusKit
+        product: CygnusKit
+
+schemes:
+  Cygnus:
+    build:
+      targets:
+        Cygnus: all
+        CygnusTests: [test]
+    test:
+      targets:
+        - CygnusTests
+    run:
+      config: Debug
