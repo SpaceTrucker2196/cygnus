@@ -48,9 +48,9 @@ struct ReadyContentView: View {
             switch store.viewMode {
             case .outline:
                 OutlineContainerView()
-            case .graph:
+            case .flat, .space:
                 if store.searchText.isEmpty {
-                    DependencyGraphView(snapshot: snapshot)
+                    DependencyGraphView(snapshot: snapshot, mode: store.viewMode)
                 } else {
                     OutlineContainerView()
                 }
@@ -71,12 +71,15 @@ struct ReadyContentView: View {
 
 struct DependencyGraphView: View {
     let snapshot: GraphSnapshot
+    let mode: WorkspaceStore.ViewMode
 
     var body: some View {
         let scene = GraphScene.dependencies(from: snapshot)
         if scene.nodes.isEmpty {
             ContentUnavailableView("No Import Edges", systemImage: "point.3.filled.connected.trianglepath.dotted",
                                    description: Text("This repository has no analyzable imports yet."))
+        } else if mode == .space {
+            SpaceGraphView(scene: scene)
         } else {
             FlatGraphView(scene: scene)
         }

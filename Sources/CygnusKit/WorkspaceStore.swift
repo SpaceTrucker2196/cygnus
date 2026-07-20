@@ -22,7 +22,8 @@ public final class WorkspaceStore {
     public private(set) var indices: [UUID: SnapshotIndex] = [:]
     public enum ViewMode: String, CaseIterable, Sendable {
         case outline = "Outline"
-        case graph = "Graph"
+        case flat = "Flat"
+        case space = "3D"
     }
 
     public var selectedRepo: UUID?

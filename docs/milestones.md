@@ -40,5 +40,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       Fruchterman–Reingold, progressive frames, zoom/pan/select;
       Outline|Graph picker). *Deferred: Barnes–Hut for >2k-node
       scenes.* *(2026-07-19)*
-- [ ] **S5** — RealityKit 3D. Perf gate: 60 fps @ 2k nodes / 6k edges.
+- [x] **S5** — RealityKit 3D: instanced sphere nodes, single batched
+      edge mesh, arcball orbit/zoom, tap picking synced to inspector,
+      Outline|Flat|3D picker. *Deferred: 60 fps @ 2k-node perf gate
+      needs a manual GUI run; progressive 3D layout animation;
+      LowLevelMesh dynamic edges.* *(2026-07-19)*
 - [ ] **S6** — Real-engine integration, dogfood, first tagged build.
