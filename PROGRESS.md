@@ -75,3 +75,21 @@
   Remaining for S6: Jeff's manual GUI run + 60 fps gate, then first
   tagged build. E6 remaining: derived-layer rollups, fuzzy renames,
   IndexStoreDB spike.
+
+## 2026-07-20
+
+- First real GUI run (Jeff): analysis + Flat view worked on an 846-
+  node repo. Feedback fixed same day: system/external modules no
+  longer charted (SystemModules lists + internal-by-directory-name
+  detection, Filters toggle for third-party), per-area color coding
+  with legend, zoom/label-size/label-mode control bar on both graph
+  views.
+- **RealityKit renderer parked.** RealityView GPU init crashed
+  (EXC_BREAKPOINT in CoreRE PerFrameAllocatorGPUManager::init) on
+  2026-07-19 and kernel-wedged an app process (unkillable, state SX)
+  on 2026-07-20 on this machine. 3D mode is now `Orbit3DView`: the
+  Layout3D solution perspective-projected onto the Canvas renderer
+  (orbit/zoom/select, painter's order, depth attenuation).
+  `SpaceGraphView`/`GraphSceneBuilder` remain in-tree for when the
+  GPU issue is understood; do not re-enable without testing on a
+  fresh boot.
