@@ -23,3 +23,16 @@
   commits, upsert/dedupe semantics, FTS name search, provenance
   links. 16 tests green incl. revision isolation, time travel, and
   atomic rollback on unknown-entity assertion.
+- E2–E5 complete (28 tests green): CAS + LocalFS provider + manifest
+  diff; SwiftSyntax extractor (decls/imports/nesting, extensions);
+  tree-sitter python/c extractors (query-driven, ancestor-walk decl
+  paths); Resolver (observations → assertions with provenance);
+  `CygnusWorkspace` facade with parallel extraction and incremental
+  indexing; projections (contains tree, dependency graph,
+  neighborhood); CLI register/repos/index/query/revisions.
+  Dogfood: GRDB cold index 3.4 s (2,920 files, 23.8k entities,
+  38.8k edges), incremental no-op 0.6 s. Fixed en route: extension
+  members attach to deepest existing ancestor (unknownEntity crash on
+  GRDB); failed runs can't poison the diff baseline (revisions now
+  reference their snapshot; baseline = last committed snapshot).
+  Engine is ready for the UI (S-milestones).

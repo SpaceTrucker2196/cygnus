@@ -23,20 +23,90 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
 
     // MARK: - Repositories & snapshots
 
-    public func registerRepository(_ id: RepositoryID, displayName: String) throws {
+    public struct RegisteredRepository: Hashable, Codable, Sendable {
+        public let id: RepositoryID
+        public let displayName: String
+        public let rootPath: String?
+    }
+
+    public func registerRepository(_ id: RepositoryID, displayName: String,
+                                   rootPath: String? = nil) throws {
         try db.write { db in
             try db.execute(
-                sql: "INSERT OR IGNORE INTO repositories (id, display_name) VALUES (?, ?)",
-                arguments: [id.raw, displayName])
+                sql: """
+                    INSERT INTO repositories (id, display_name, root_path) VALUES (?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name,
+                                                  root_path = excluded.root_path
+                    """,
+                arguments: [id.raw, displayName, rootPath])
         }
     }
 
-    public func recordSnapshot(repository: RepositoryID, sourceRef: String?) throws -> SnapshotID {
+    public func repositories() throws -> [RegisteredRepository] {
+        try db.read { db in
+            try Row.fetchAll(db, sql: "SELECT id, display_name, root_path FROM repositories ORDER BY id")
+                .map {
+                    RegisteredRepository(id: RepositoryID($0["id"]),
+                                         displayName: $0["display_name"],
+                                         rootPath: $0["root_path"])
+                }
+        }
+    }
+
+    public func recordSnapshot(repository: RepositoryID, sourceRef: String?,
+                               files: [SnapshotFileRecord] = []) throws -> SnapshotID {
         try db.write { db in
             try db.execute(
                 sql: "INSERT INTO snapshots (repository_id, source_ref, created_at) VALUES (?, ?, ?)",
                 arguments: [repository.raw, sourceRef, iso8601Now()])
-            return SnapshotID(db.lastInsertedRowID)
+            let snapshotID = db.lastInsertedRowID
+            if !files.isEmpty {
+                let stmt = try db.makeStatement(sql: """
+                    INSERT INTO snapshot_files (snapshot_id, path, blob_hash, size, lang_hint)
+                    VALUES (?, ?, ?, ?, ?)
+                    """)
+                for file in files {
+                    try stmt.execute(arguments: [
+                        snapshotID, file.path, file.blobHash, file.size, file.languageHint,
+                    ])
+                }
+            }
+            return SnapshotID(snapshotID)
+        }
+    }
+
+    public struct SnapshotFileRecord: Hashable, Codable, Sendable {
+        public let path: String
+        public let blobHash: String
+        public let size: Int64
+        public let languageHint: String?
+        public init(path: String, blobHash: String, size: Int64, languageHint: String?) {
+            self.path = path
+            self.blobHash = blobHash
+            self.size = size
+            self.languageHint = languageHint
+        }
+    }
+
+    /// Latest snapshot of a repository that a committed revision
+    /// references, with its file manifest. Snapshots recorded by runs
+    /// that failed before commit are never a diff baseline.
+    public func latestIndexedSnapshot(repository: RepositoryID) throws -> (SnapshotID, [SnapshotFileRecord])? {
+        try db.read { db in
+            guard let snapshotID = try Int64.fetchOne(db, sql: """
+                SELECT s.id FROM snapshots s
+                JOIN revisions r ON r.snapshot_id = s.id
+                WHERE s.repository_id = ? ORDER BY s.id DESC LIMIT 1
+                """, arguments: [repository.raw])
+            else { return nil }
+            let files = try Row.fetchAll(db, sql: """
+                SELECT path, blob_hash, size, lang_hint FROM snapshot_files
+                WHERE snapshot_id = ? ORDER BY path
+                """, arguments: [snapshotID]).map {
+                    SnapshotFileRecord(path: $0["path"], blobHash: $0["blob_hash"],
+                                       size: $0["size"], languageHint: $0["lang_hint"])
+                }
+            return (SnapshotID(snapshotID), files)
         }
     }
 
@@ -81,11 +151,16 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
         }
     }
 
+    public func commit(_ changes: RevisionChanges, note: String?) throws -> RevisionID {
+        try commit(changes, note: note, snapshot: nil)
+    }
+
     @discardableResult
-    public func commit(_ changes: RevisionChanges, note: String? = nil) throws -> RevisionID {
+    public func commit(_ changes: RevisionChanges, note: String? = nil,
+                       snapshot: SnapshotID? = nil) throws -> RevisionID {
         try db.write { db in
-            try db.execute(sql: "INSERT INTO revisions (note, created_at) VALUES (?, ?)",
-                           arguments: [note, iso8601Now()])
+            try db.execute(sql: "INSERT INTO revisions (note, created_at, snapshot_id) VALUES (?, ?, ?)",
+                           arguments: [note, iso8601Now(), snapshot?.raw])
             let rev = db.lastInsertedRowID
 
             for assertion in changes.entities {
@@ -153,6 +228,11 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
             versionID = db.lastInsertedRowID
             try db.execute(sql: "INSERT INTO entity_search (name, version_id) VALUES (?, ?)",
                            arguments: [assertion.name, versionID])
+            for path in Set(assertion.anchors.map(\.path)) {
+                try db.execute(
+                    sql: "INSERT OR IGNORE INTO entity_version_paths (path, version_id) VALUES (?, ?)",
+                    arguments: [path, versionID])
+            }
         }
 
         try link(observations: assertion.supportedBy, factKind: "entity_version",
@@ -172,6 +252,27 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
                 """)
             try db.execute(sql: "DELETE FROM entity_search WHERE version_id = ?",
                            arguments: [versionID])
+        }
+        // A relationship must connect valid entities (MISSION.md §2.2):
+        // retracting an entity closes its current edges with it.
+        try db.execute(literal: """
+            UPDATE relationships SET valid_to = \(rev)
+            WHERE (source_id = \(entityID) OR target_id = \(entityID)) AND valid_to IS NULL
+            """)
+    }
+
+    /// Stable keys of entities whose current version is anchored in
+    /// the given path. Incremental indexing retracts vanished ones.
+    public func currentEntityKeys(anchoredIn path: String) throws -> [StableKey] {
+        try db.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT e.stable_key
+                FROM entity_version_paths p
+                JOIN entity_versions v ON v.id = p.version_id AND v.valid_to IS NULL
+                JOIN entities e ON e.id = v.entity_id
+                WHERE p.path = ?
+                ORDER BY e.stable_key
+                """, arguments: [path]).map(StableKey.init)
         }
     }
 
@@ -274,6 +375,33 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
             }
             sql += " ORDER BY id"
             return try Row.fetchAll(db, sql: sql, arguments: arguments).map(Self.relationship)
+        }
+    }
+
+    /// All relationships of a kind — projection builders consume this.
+    public func relationships(kind: RelationshipKind,
+                              at query: RevisionQuery) throws -> [Relationship] {
+        try db.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, kind, source_id, target_id, layer, valid_from, valid_to, properties
+                FROM relationships
+                WHERE kind = ? AND \(Self.intervalPredicate(query, alias: "relationships"))
+                ORDER BY id
+                """, arguments: [kind.rawValue]).map(Self.relationship)
+        }
+    }
+
+    /// Batch entity fetch by store id.
+    public func entities(ids: [EntityID], at query: RevisionQuery) throws -> [ResolvedEntity] {
+        guard !ids.isEmpty else { return [] }
+        return try db.read { db in
+            let marks = Array(repeating: "?", count: ids.count).joined(separator: ",")
+            return try Row.fetchAll(db, sql: """
+                SELECT e.id AS eid, e.stable_key, e.kind, e.repository_id, e.first_seen_rev,
+                       v.id AS vid, v.valid_from, v.valid_to, v.name, v.properties, v.anchors
+                FROM entities e JOIN entity_versions v ON v.entity_id = e.id
+                WHERE e.id IN (\(marks)) AND \(Self.intervalPredicate(query, alias: "v"))
+                """, arguments: StatementArguments(ids.map(\.raw))).map(Self.resolvedEntity)
         }
     }
 

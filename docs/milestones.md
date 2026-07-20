@@ -10,14 +10,20 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       `docs/schema.md`). *(2026-07-19)*
 - [x] **E1** — Graph model + store: schema, revision transactions,
       provenance links, append-only/isolation tests. *(2026-07-19)*
-- [ ] **E2** — Providers: discovery, LocalFS + git, CAS, manifest diff,
-      `cygnus register`.
-- [ ] **E3** — Pipeline + Swift extractor + entity resolution;
-      `cygnus index` on a real repo.
-- [ ] **E4** — Python/C extractors + derivers (contains, imports,
-      metrics) with provenance-driven invalidation.
-- [ ] **E5** — Incremental watch + full query surface + perf pass.
-- [ ] **E6** — Hardening: fuzzy renames, IndexStoreDB spike.
+- [x] **E2** — Providers: LocalFS walk + CAS + manifest diff, git
+      source_ref, `cygnus register`. *(2026-07-19)*
+- [x] **E3** — Pipeline + Swift extractor + entity resolution;
+      `cygnus index` on a real repo (GRDB: 2,920 files → 23.8k
+      entities / 38.8k edges in 3.4 s cold). *(2026-07-19)*
+- [x] **E4** — Python/C tree-sitter extractors; cross-language fixture
+      indexed end-to-end. *(2026-07-19)*
+- [x] **E5** — Incremental re-index via committed-snapshot manifest
+      diff (0.6 s no-op on GRDB); query projections (contains tree,
+      dependency graph, neighborhood); `CygnusWorkspace` facade.
+      *Deferred to E6: FSEvents watch, `cygnus verify`, diff-between-
+      revisions query, derived-layer rollups.* *(2026-07-19)*
+- [ ] **E6** — Hardening: FSEvents watch, `cygnus verify`, revision
+      diff query, derived rollups, fuzzy renames, IndexStoreDB spike.
 
 ## Shell
 

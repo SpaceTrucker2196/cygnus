@@ -40,12 +40,14 @@ let package = Package(
         .target(name: "CygnusExtractorSwift", dependencies: [
             "CygnusGraph",
             "CygnusObservation",
+            "CygnusProviders",
             .product(name: "SwiftSyntax", package: "swift-syntax"),
             .product(name: "SwiftParser", package: "swift-syntax"),
         ]),
         .target(name: "CygnusExtractorTS", dependencies: [
             "CygnusGraph",
             "CygnusObservation",
+            "CygnusProviders",
             .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
             .product(name: "TreeSitterPython", package: "tree-sitter-python"),
             .product(name: "TreeSitterC", package: "tree-sitter-c"),
@@ -63,10 +65,13 @@ let package = Package(
             "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusDerive", "CygnusQuery",
         ]),
 
-        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore"]),
+        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusGraph"]),
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
+        .testTarget(name: "ExtractorSwiftTests", dependencies: ["CygnusExtractorSwift", "CygnusProviders"]),
+        .testTarget(name: "EngineTests", dependencies: ["CygnusEngine", "CygnusQuery"]),
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
+        .testTarget(name: "ProviderTests", dependencies: ["CygnusProviders"]),
         .testTarget(name: "ExtractorTSTests", dependencies: ["CygnusExtractorTS"]),
     ]
 )

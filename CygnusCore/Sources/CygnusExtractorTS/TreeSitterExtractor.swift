@@ -2,11 +2,14 @@ import Foundation
 import SwiftTreeSitter
 import TreeSitterPython
 import TreeSitterC
+import CygnusGraph
+import CygnusObservation
+import CygnusProviders
 
 // tree-sitter host for the Python and C extractors. Grammars are
-// pinned exact in Package.swift. Per-language extraction is
-// declarative .scm queries plus a normalization map to the core
-// vocabulary (E4); this file currently owns language setup.
+// pinned exact in Package.swift. Extraction is query-driven; a new
+// language is a grammar dependency, a query, and a normalization map
+// to the core vocabulary.
 
 public enum TreeSitterLanguageID: String, Sendable, CaseIterable {
     case python, c
@@ -22,13 +25,69 @@ public enum TreeSitterHost {
     }
 
     /// Parse source text; returns the root node's s-expression, or nil
-    /// if parsing produced no tree. Spike-level API — E4 replaces this
-    /// with query-driven observation extraction.
+    /// if parsing produced no tree.
     public static func parseRootSExpression(_ id: TreeSitterLanguageID,
                                             source: String) throws -> String? {
         let parser = Parser()
         try parser.setLanguage(language(id))
         guard let tree = parser.parse(source) else { return nil }
         return tree.rootNode?.sExpressionString
+    }
+
+    /// One query capture with its resolved text and location.
+    public struct Capture {
+        public let name: String
+        public let text: String
+        public let range: SourceRange
+        public let node: Node
+    }
+
+    /// Run a query over source, yielding named captures in document
+    /// order. Parser and query are created per call: neither is
+    /// Sendable, and extractors run concurrently.
+    public static func captures(_ id: TreeSitterLanguageID, query queryText: String,
+                                source: String) throws -> [Capture] {
+        let language = language(id)
+        let parser = Parser()
+        try parser.setLanguage(language)
+        guard let tree = parser.parse(source) else { return [] }
+        let query = try Query(language: language, data: Data(queryText.utf8))
+        let cursor = query.execute(in: tree)
+        let text = source as NSString
+
+        var result: [Capture] = []
+        while let match = cursor.next() {
+            for capture in match.captures {
+                let node = capture.node
+                let start = node.pointRange.lowerBound
+                let end = node.pointRange.upperBound
+                result.append(Capture(
+                    name: capture.name ?? "",
+                    text: text.substring(with: node.range),
+                    range: SourceRange(
+                        startLine: Int(start.row) + 1, startColumn: Int(start.column / 2) + 1,
+                        endLine: Int(end.row) + 1, endColumn: Int(end.column / 2) + 1),
+                    node: node))
+            }
+        }
+        return result
+    }
+
+    /// Dot-joined nesting path for a declaration node: names of
+    /// enclosing definition nodes (of the given syntax kinds),
+    /// outermost first, ending with the node's own captured name.
+    public static func declPath(for node: Node, name: String,
+                                nestingKinds: Set<String>, in source: String) -> String {
+        let text = source as NSString
+        var components: [String] = []
+        var ancestor = node.parent
+        while let current = ancestor {
+            if nestingKinds.contains(current.nodeType ?? ""),
+               let nameNode = current.child(byFieldName: "name") {
+                components.append(text.substring(with: nameNode.range))
+            }
+            ancestor = current.parent
+        }
+        return (components.reversed() + [name]).joined(separator: ".")
     }
 }
