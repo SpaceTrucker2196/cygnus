@@ -104,14 +104,60 @@ import CygnusObservation
         defer { try? FileManager.default.removeItem(at: root) }
         let workspace = try makeWorkspace()
         let repo = try await workspace.register(path: root)
-        _ = try await workspace.index(repo)
+        let first = try await workspace.index(repo)
         let store = await workspace.store
         let before = try Projections.dependencyGraph(store: store)
 
         let second = try await workspace.index(repo)
         #expect(second.filesChanged == 0)
+        // No empty revision minted for a no-op re-index.
+        #expect(second.revision == first.revision)
+        #expect(try store.revisions().count == 1)
         let after = try Projections.dependencyGraph(store: store)
         #expect(after.relationships.count == before.relationships.count)
+    }
+
+    @Test func verifyIsCleanAfterIncrementalEdits() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+
+        // Edit, add, delete — then compare incremental against a
+        // cold rebuild.
+        try """
+            import CoreGraphics
+            struct Graph { func render() -> Int { 1 } }
+            enum Palette { case mono }
+            """.write(to: root.appendingPathComponent("Sources/Graph.swift"),
+                      atomically: true, encoding: .utf8)
+        try "def added(): pass\n".write(to: root.appendingPathComponent("added.py"),
+                                        atomically: true, encoding: .utf8)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("io.c"))
+        _ = try await workspace.index(repo)
+
+        let report = try await workspace.verify(repo)
+        #expect(report.staleFacts.isEmpty)
+        #expect(report.missingFacts.isEmpty)
+    }
+
+    @Test func diffReportsRevisionDelta() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        let first = try await workspace.index(repo)
+
+        try "def added(): pass\n".write(to: root.appendingPathComponent("added.py"),
+                                        atomically: true, encoding: .utf8)
+        let second = try await workspace.index(repo)
+
+        let delta = try await workspace.store.diff(from: first.revision, to: second.revision)
+        let addedNames = delta.assertedEntityVersions.map(\.version.name)
+        #expect(addedNames.contains("added.py"))
+        #expect(addedNames.contains("added()") || addedNames.contains("added"))
+        #expect(delta.retractedEntityVersions.isEmpty)
     }
 
     @Test func incrementalReindexRetractsVanishedFacts() async throws {

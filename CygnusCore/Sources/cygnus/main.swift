@@ -3,6 +3,7 @@ import CygnusGraph
 import CygnusEngine
 import CygnusStore
 import CygnusQuery
+import CygnusProviders
 
 // CLI harness — the fastest way to exercise the engine without the
 // app. Workspace location: $CYGNUS_WORKSPACE or the default under
@@ -20,6 +21,9 @@ commands:
   query contains     print the containment tree
   query deps         print the import graph
   revisions          list graph revisions
+  diff <r1> <r2>     what changed between two revisions
+  verify             full rebuild vs incremental graph, per repository
+  watch              continuous incremental analysis (FSEvents)
   bench              interval-schema storage benchmark
 """
 
@@ -86,6 +90,65 @@ case "revisions":
     let workspace = try CygnusWorkspace(directory: workspaceDirectory())
     for revision in try await workspace.store.revisions() {
         print("r\(revision.id.raw)\t\(revision.createdAt)\t\(revision.note ?? "")")
+    }
+
+case "diff":
+    guard arguments.count >= 3, let from = Int64(arguments[1]), let to = Int64(arguments[2])
+    else { print(usage); exit(2) }
+    let workspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let delta = try await workspace.store.diff(from: RevisionID(from), to: RevisionID(to))
+    print("r\(from) → r\(to): +\(delta.assertedEntityVersions.count) entities, " +
+          "-\(delta.retractedEntityVersions.count) entities, " +
+          "+\(delta.assertedRelationships.count) edges, " +
+          "-\(delta.retractedRelationships.count) edges")
+    for entity in delta.assertedEntityVersions.prefix(30) {
+        print("  + \(entity.version.name)  (\(entity.entity.stableKey.raw))")
+    }
+    for entity in delta.retractedEntityVersions.prefix(30) {
+        print("  - \(entity.version.name)  (\(entity.entity.stableKey.raw))")
+    }
+
+case "verify":
+    let workspace = try CygnusWorkspace(directory: workspaceDirectory())
+    var failed = false
+    for repo in try await workspace.repositories() {
+        let report = try await workspace.verify(repo.id)
+        if report.isClean {
+            print("\(repo.displayName): clean")
+        } else {
+            failed = true
+            print("\(repo.displayName): \(report.staleFacts.count) stale, " +
+                  "\(report.missingFacts.count) missing")
+            for fact in report.staleFacts.prefix(20) { print("  stale: \(fact)") }
+            for fact in report.missingFacts.prefix(20) { print("  missing: \(fact)") }
+        }
+    }
+    exit(failed ? 1 : 0)
+
+case "watch":
+    let workspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let repos = try await workspace.repositories()
+    let roots = repos.compactMap { $0.rootPath.map(URL.init(fileURLWithPath:)) }
+    guard !roots.isEmpty else { print("no repositories registered"); exit(2) }
+    print("watching \(roots.map(\.lastPathComponent).joined(separator: ", ")) — ^C to stop")
+
+    let changes = AsyncStream<Void> { continuation in
+        let watcher = FSWatcher(roots: roots) { continuation.yield() }
+        continuation.onTermination = { _ in watcher.stop() }
+    }
+    // Index once on start so the baseline is current, then on change.
+    for repo in repos {
+        let result = try await workspace.index(repo.id)
+        print("\(repo.displayName): revision \(result.revision.raw) (\(result.filesChanged) changed)")
+    }
+    for await _ in changes {
+        for repo in repos {
+            let result = try await workspace.index(repo.id)
+            if result.filesChanged > 0 {
+                print("\(repo.displayName): revision \(result.revision.raw) " +
+                      "(\(result.filesChanged) changed)")
+            }
+        }
     }
 
 case "bench":

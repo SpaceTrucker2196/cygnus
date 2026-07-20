@@ -426,6 +426,46 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
         }
     }
 
+    // MARK: - Revision diff
+
+    public struct GraphDelta: Sendable {
+        public let assertedEntityVersions: [ResolvedEntity]
+        public let retractedEntityVersions: [ResolvedEntity]
+        public let assertedRelationships: [Relationship]
+        public let retractedRelationships: [Relationship]
+        public var isEmpty: Bool {
+            assertedEntityVersions.isEmpty && retractedEntityVersions.isEmpty
+                && assertedRelationships.isEmpty && retractedRelationships.isEmpty
+        }
+    }
+
+    /// What changed between two revisions: facts asserted in
+    /// (from, to] and facts retracted in (from, to]. Cheap by
+    /// construction — the interval columns are the change log.
+    public func diff(from: RevisionID, to: RevisionID) throws -> GraphDelta {
+        try db.read { db in
+            func versions(_ predicate: String) throws -> [ResolvedEntity] {
+                try Row.fetchAll(db, sql: """
+                    SELECT e.id AS eid, e.stable_key, e.kind, e.repository_id, e.first_seen_rev,
+                           v.id AS vid, v.valid_from, v.valid_to, v.name, v.properties, v.anchors
+                    FROM entities e JOIN entity_versions v ON v.entity_id = e.id
+                    WHERE \(predicate) ORDER BY e.stable_key
+                    """, arguments: [from.raw, to.raw]).map(Self.resolvedEntity)
+            }
+            func relationships(_ predicate: String) throws -> [Relationship] {
+                try Row.fetchAll(db, sql: """
+                    SELECT id, kind, source_id, target_id, layer, valid_from, valid_to, properties
+                    FROM relationships WHERE \(predicate) ORDER BY id
+                    """, arguments: [from.raw, to.raw]).map(Self.relationship)
+            }
+            return GraphDelta(
+                assertedEntityVersions: try versions("v.valid_from > ? AND v.valid_from <= ?"),
+                retractedEntityVersions: try versions("v.valid_to > ? AND v.valid_to <= ?"),
+                assertedRelationships: try relationships("valid_from > ? AND valid_from <= ?"),
+                retractedRelationships: try relationships("valid_to > ? AND valid_to <= ?"))
+        }
+    }
+
     public func provenance(ofRelationship id: Int64) throws -> [ObservationID] {
         try provenance(factKind: "relationship", factID: id)
     }
