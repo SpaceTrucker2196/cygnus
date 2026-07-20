@@ -33,6 +33,7 @@ targets:
       - path: App
         excludes:
           - "Tests/**"
+          - "UITests/**"
     entitlements:
       path: App/Cygnus.entitlements
       properties:
@@ -67,14 +68,29 @@ targets:
       - package: CygnusKit
         product: CygnusKit
 
+  CygnusUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - App/UITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: io.river.cygnus.mac.uitests
+        TEST_TARGET_NAME: Cygnus
+    dependencies:
+      - target: Cygnus
+
 schemes:
   Cygnus:
     build:
       targets:
         Cygnus: all
         CygnusTests: [test]
+        CygnusUITests: [test]
     test:
       targets:
         - CygnusTests
+        - CygnusUITests
     run:
       config: Debug
