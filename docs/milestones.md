@@ -28,10 +28,14 @@ Engine (E) is the critical path; shell (S) runs in parallel against
 ## Shell
 
 - [x] **S0** — Factory scaffold; packages + app build green. *(2026-07-19)*
-- [ ] **S1** — Workspace shell: sidebar, bookmarks, persistence, relink.
-- [ ] **S2** — Engine seam + fixture analysis + progress UI.
-      *Interface checkpoint with E1.*
-- [ ] **S3** — Outline + inspector + search.
+- [x] **S1** — Workspace shell: sidebar with add/remove/re-analyze,
+      security-scoped bookmarks, workspace.json persistence.
+      *Deferred: stale-bookmark relink UX.* *(2026-07-19)*
+- [x] **S2** — Engine seam wired to the real engine
+      (`WorkspaceGraphEngine` over `CygnusWorkspace`), analysis
+      progress UI with cancel/retry. *(2026-07-19)*
+- [x] **S3** — Outline (containment tree), entity inspector with
+      clickable in/out edges, search. *(2026-07-19)*
 - [ ] **S4** — Flat Canvas graph view + LayoutEngine.
 - [ ] **S5** — RealityKit 3D. Perf gate: 60 fps @ 2k nodes / 6k edges.
 - [ ] **S6** — Real-engine integration, dogfood, first tagged build.
