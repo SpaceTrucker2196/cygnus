@@ -54,3 +54,13 @@
   double-click reset, nearest-node selection synced with inspector,
   degree-sized nodes, adaptive labels), Outline|Graph toolbar picker.
   8 kit tests green incl. layout determinism.
+- S5 complete: `Layout3D` (deterministic FR on a jittered sphere
+  spiral, solved off-main), `SpaceGraphView`/`SpaceRenderView`
+  (RealityView, PerspectiveCamera arcball with drag orbit + magnify
+  zoom, selection highlight entity), `GraphSceneBuilder` (shared
+  sphere mesh + per-kind UnlitMaterial → auto-instanced nodes;
+  ALL edges baked into one prism mesh entity — never one entity per
+  edge; InputTarget+Collision for tap picking). Outline|Flat|3D
+  picker. App tests build the RealityKit scene and assert the
+  one-edge-entity invariant. Deferred: manual 60 fps gate check,
+  progressive 3D animation, LowLevelMesh dynamic edges.
