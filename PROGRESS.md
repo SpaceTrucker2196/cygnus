@@ -103,3 +103,16 @@
   binary launched directly from a terminal can fail scoped-bookmark
   creation; and a kernel-wedged instance makes plain `open` time out
   (-1712) until reboot; `open -n` works around it.
+- UI tests added (CygnusUITests: seeded repo → ready → all view
+  modes → search → inspector). Findings from the hunt: the
+  "unkillable" pid was suspended under Xcode's debugger (kill its
+  debugserver to release); App-init side effects suppressed window
+  creation (seeding moved to post-launch .task; WindowGroup now
+  defaultLaunchBehavior(.presented) + restorationBehavior(.disabled));
+  direct binary exec gets NO window on this OS — always launch via
+  LaunchServices; XCUITest in this login session sees an empty AX
+  tree (environment degradation — likely same session damage as the
+  RealityKit incident). Validated live instead: seeded repo green-
+  check + a real repo added through the panel and scanning. Rerun
+  `make test` after reboot to confirm UI tests pass in a clean
+  session.
