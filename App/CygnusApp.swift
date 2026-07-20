@@ -10,5 +10,8 @@ struct CygnusApp: App {
             WorkspaceView()
                 .environment(store)
         }
+        Settings {
+            SettingsView()
+        }
     }
 }

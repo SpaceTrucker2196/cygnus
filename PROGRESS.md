@@ -64,3 +64,14 @@
   picker. App tests build the RealityKit scene and assert the
   one-edge-entity invariant. Deferred: manual 60 fps gate check,
   progressive 3D animation, LowLevelMesh dynamic edges.
+- E6 partial: `cygnus verify` (cold rebuild vs incremental,
+  test-proven clean after edit/add/delete), `store.diff(from:to:)` +
+  `cygnus diff`, FSEvents `cygnus watch` (verified live: one revision
+  per debounced change), no-op indexes no longer mint revisions.
+- S6 partial: stale-bookmark → needs-relink state with Locate Folder
+  flow, Settings scene (engine data location, version, on-device
+  note), generated Cygnus-constellation app icon
+  (tools/make_icon.swift → Assets.xcassets; black/white/HAL-red).
+  Remaining for S6: Jeff's manual GUI run + 60 fps gate, then first
+  tagged build. E6 remaining: derived-layer rollups, fuzzy renames,
+  IndexStoreDB spike.

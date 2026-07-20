@@ -88,6 +88,8 @@ struct RepoRowView: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+        case .needsRelink:
+            Image(systemName: "questionmark.folder.fill").foregroundStyle(.orange)
         case .idle, nil:
             Image(systemName: "circle.dotted").foregroundStyle(.secondary)
         }
