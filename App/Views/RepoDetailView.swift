@@ -32,8 +32,53 @@ struct RepoDetailView: View {
                     if let id = store.selectedRepo { store.analyze(id) }
                 }
             }
-        case .ready:
-            OutlineContainerView()
+        case .ready(let snapshot):
+            ReadyContentView(snapshot: snapshot)
+        }
+    }
+}
+
+struct ReadyContentView: View {
+    @Environment(WorkspaceStore.self) private var store
+    let snapshot: GraphSnapshot
+
+    var body: some View {
+        @Bindable var store = store
+        Group {
+            switch store.viewMode {
+            case .outline:
+                OutlineContainerView()
+            case .graph:
+                if store.searchText.isEmpty {
+                    DependencyGraphView(snapshot: snapshot)
+                } else {
+                    OutlineContainerView()
+                }
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: $store.viewMode) {
+                    ForEach(WorkspaceStore.ViewMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+    }
+}
+
+struct DependencyGraphView: View {
+    let snapshot: GraphSnapshot
+
+    var body: some View {
+        let scene = GraphScene.dependencies(from: snapshot)
+        if scene.nodes.isEmpty {
+            ContentUnavailableView("No Import Edges", systemImage: "point.3.filled.connected.trianglepath.dotted",
+                                   description: Text("This repository has no analyzable imports yet."))
+        } else {
+            FlatGraphView(scene: scene)
         }
     }
 }
