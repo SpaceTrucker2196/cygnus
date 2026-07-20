@@ -52,20 +52,24 @@ public final class WorkspaceStore {
     // MARK: - Registry
 
     /// Add a folder the user picked in NSOpenPanel (already security-
-    /// scoped) and start analysis.
+    /// scoped) and start analysis. Failures are never silent: the
+    /// repo row appears with a failed state describing what happened.
     public func addRepository(at url: URL) {
+        var repo = RegisteredRepo(
+            displayName: url.lastPathComponent,
+            pathHint: url.path,
+            bookmark: Data())
         do {
-            let repo = RegisteredRepo(
-                displayName: url.lastPathComponent,
-                pathHint: url.path,
-                bookmark: try RepoAccess.bookmark(for: url))
+            repo.bookmark = try RepoAccess.bookmark(for: url)
             repos.append(repo)
             states[repo.id] = .idle
             try persistence.save(repos)
             selectedRepo = repo.id
             analyze(repo.id)
         } catch {
-            // Registration failed before any state existed; nothing to roll back.
+            repos.append(repo)
+            selectedRepo = repo.id
+            states[repo.id] = .failed("Couldn't save access to this folder: \(error.localizedDescription)")
         }
     }
 
