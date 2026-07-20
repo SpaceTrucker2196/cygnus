@@ -93,3 +93,13 @@
   `SpaceGraphView`/`GraphSceneBuilder` remain in-tree for when the
   GPU issue is understood; do not re-enable without testing on a
   fresh boot.
+- "Wouldn't load a repo" follow-up: RepoLoadingTests now drive the
+  full add→bookmark→persist→analyze→relaunch→move/delete→relink path
+  with the real engine. Caught + fixed: snapshots mixed all workspace
+  repos (now scoped per repo); addRepository swallowed bookmark
+  failures silently (now a visible failed state). Learned: bookmarks
+  follow folder moves; only deletion needs relink. Operational note:
+  launch the app via LaunchServices (`open`, Finder, Xcode) — a
+  binary launched directly from a terminal can fail scoped-bookmark
+  creation; and a kernel-wedged instance makes plain `open` time out
+  (-1712) until reboot; `open -n` works around it.
