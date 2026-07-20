@@ -1,8 +1,8 @@
 // swift-tools-version: 6.0
 // CygnusKit — app-side headless adapter between CygnusCore and the
-// SwiftUI shell. Compiles standalone against the GraphEngine protocol
-// (with FixtureGraphEngine for demos/tests) until the engine's facade
-// is consumed; then the real engine is a one-file conformance.
+// SwiftUI shell. The app imports only this package; the engine is
+// reached through the GraphEngine seam (WorkspaceGraphEngine wraps
+// the real CygnusWorkspace, FixtureGraphEngine serves tests/demos).
 import PackageDescription
 
 let package = Package(
@@ -11,8 +11,16 @@ let package = Package(
     products: [
         .library(name: "CygnusKit", targets: ["CygnusKit"]),
     ],
+    dependencies: [
+        .package(path: "CygnusCore"),
+    ],
     targets: [
-        .target(name: "CygnusKit"),
+        .target(name: "CygnusKit", dependencies: [
+            .product(name: "CygnusEngine", package: "CygnusCore"),
+            .product(name: "CygnusGraph", package: "CygnusCore"),
+            .product(name: "CygnusStore", package: "CygnusCore"),
+            .product(name: "CygnusQuery", package: "CygnusCore"),
+        ]),
         .testTarget(name: "CygnusKitTests", dependencies: ["CygnusKit"]),
     ]
 )

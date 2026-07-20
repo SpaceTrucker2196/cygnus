@@ -36,3 +36,14 @@
   GRDB); failed runs can't poison the diff baseline (revisions now
   reference their snapshot; baseline = last committed snapshot).
   Engine is ready for the UI (S-milestones).
+- S1–S3 complete: CygnusKit wired to the real engine
+  (`WorkspaceGraphEngine` adapter: register → index → snapshot
+  projection), `WorkspaceStore` state machine, security-scoped
+  bookmarks via `RepoAccess.withAccess`, workspace.json registry,
+  `SnapshotIndex` (tree/adjacency/search built once per snapshot).
+  App: repo sidebar (NSOpenPanel add, context menu), analysis
+  progress with cancel, containment outline, entity inspector with
+  clickable edges, ⌘F search. All three suites green; adapter e2e
+  test runs the real engine on a fixture repo. First manual GUI run
+  still pending (needs a human to pick a folder in the open panel).
+  Next: S4 Flat Canvas graph view + LayoutEngine, then S5 RealityKit.

@@ -1,31 +1,45 @@
 import SwiftUI
 import CygnusKit
 
-// Single-window workspace shell. Sidebar = registered repos, content =
-// graph / analysis status, inspector = selected entity. S1 fills in
-// repo registration; this is the S0 skeleton.
+// Single-window workspace shell. Sidebar = registered repos, content
+// = analysis status / outline, inspector = selected entity.
 
 struct WorkspaceView: View {
+    @Environment(WorkspaceStore.self) private var store
+    @State private var inspectorShown = true
+
     var body: some View {
         NavigationSplitView {
-            List {
-                Section("Repositories") {
-                    Text("Add a repository to begin")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260)
+            RepoSidebarView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
-            ContentUnavailableView(
-                "No Repository Selected",
-                systemImage: "point.3.connected.trianglepath.dotted",
-                description: Text("Cygnus builds a knowledge graph from repository evidence.")
-            )
+            RepoDetailView()
+                .inspector(isPresented: $inspectorShown) {
+                    EntityInspectorView()
+                        .inspectorColumnWidth(min: 260, ideal: 300)
+                }
+                .toolbar {
+                    ToolbarItem {
+                        Button {
+                            inspectorShown.toggle()
+                        } label: {
+                            Label("Inspector", systemImage: "sidebar.trailing")
+                        }
+                    }
+                }
         }
-        .navigationTitle("Cygnus")
+        .navigationTitle(currentRepoName)
+    }
+
+    private var currentRepoName: String {
+        store.repos.first(where: { $0.id == store.selectedRepo })?.displayName ?? "Cygnus"
     }
 }
 
 #Preview {
     WorkspaceView()
+        .environment(WorkspaceStore(engine: FixtureGraphEngine(),
+                                    persistence: WorkspacePersistence(
+                                        fileURL: FileManager.default.temporaryDirectory
+                                            .appendingPathComponent("preview-workspace.json"))))
 }

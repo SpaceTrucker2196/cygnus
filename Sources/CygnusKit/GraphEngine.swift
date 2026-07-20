@@ -25,10 +25,12 @@ public struct GraphSnapshot: Sendable, Equatable {
         public let id: String          // engine stable key
         public let kind: String        // namespaced kind, e.g. core:file
         public let label: String
-        public init(id: String, kind: String, label: String) {
+        public let path: String?       // source anchor, when file-backed
+        public init(id: String, kind: String, label: String, path: String? = nil) {
             self.id = id
             self.kind = kind
             self.label = label
+            self.path = path
         }
     }
 

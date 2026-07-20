@@ -6,6 +6,9 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "CygnusEngine", targets: ["CygnusEngine"]),
+        .library(name: "CygnusGraph", targets: ["CygnusGraph"]),
+        .library(name: "CygnusStore", targets: ["CygnusStore"]),
+        .library(name: "CygnusQuery", targets: ["CygnusQuery"]),
         .executable(name: "cygnus", targets: ["cygnus"]),
     ],
     dependencies: [
