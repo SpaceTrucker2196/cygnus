@@ -102,6 +102,35 @@ enum Schema {
                 """)
         }
 
+        migrator.registerMigration("v2-snapshot-files") { db in
+            try db.execute(sql: """
+                ALTER TABLE repositories ADD COLUMN root_path TEXT;
+
+                -- Which snapshot a revision indexed. The incremental
+                -- baseline is the latest snapshot referenced by a
+                -- committed revision; snapshots orphaned by failed
+                -- runs are never used as a diff baseline.
+                ALTER TABLE revisions ADD COLUMN snapshot_id INTEGER REFERENCES snapshots(id);
+
+                CREATE TABLE snapshot_files (
+                    snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+                    path TEXT NOT NULL,
+                    blob_hash TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    lang_hint TEXT,
+                    PRIMARY KEY (snapshot_id, path)
+                ) WITHOUT ROWID;
+
+                -- Anchor-path index: which entity versions are anchored
+                -- in which files. Drives incremental retraction scoping.
+                CREATE TABLE entity_version_paths (
+                    path TEXT NOT NULL,
+                    version_id INTEGER NOT NULL REFERENCES entity_versions(id),
+                    PRIMARY KEY (path, version_id)
+                ) WITHOUT ROWID;
+                """)
+        }
+
         return migrator
     }
 }
