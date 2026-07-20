@@ -87,6 +87,17 @@ public actor CygnusWorkspace {
         }
         let diff = ManifestDiff.between(previous, manifest)
 
+        // Nothing changed since the last committed snapshot: no new
+        // snapshot, no empty revision.
+        if diff.isEmpty, previous != nil,
+           let current = try store.currentRevision(),
+           let (snapshotID, _) = try store.latestIndexedSnapshot(repository: repoID) {
+            return IndexResult(
+                repository: repoID, revision: current, snapshot: snapshotID,
+                filesAnalyzed: manifest.files.count, filesChanged: 0,
+                entityCount: 0, relationshipCount: 0)
+        }
+
         let snapshot = try store.recordSnapshot(
             repository: repoID,
             sourceRef: GitInfo.headCommit(of: root),
