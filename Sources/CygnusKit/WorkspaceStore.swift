@@ -13,6 +13,9 @@ public final class WorkspaceStore {
         case analyzing(phase: String, progress: Double?)
         case ready(GraphSnapshot)
         case failed(String)
+        /// Bookmark no longer resolves (folder moved or deleted) —
+        /// the user must re-pick it.
+        case needsRelink
     }
 
     public private(set) var repos: [RegisteredRepo]
@@ -72,6 +75,20 @@ public final class WorkspaceStore {
         try? persistence.save(repos)
     }
 
+    /// Point an existing registration at a re-picked folder (already
+    /// security-scoped from NSOpenPanel) and re-analyze.
+    public func relink(_ id: UUID, to url: URL) {
+        guard let index = repos.firstIndex(where: { $0.id == id }) else { return }
+        do {
+            repos[index].bookmark = try RepoAccess.bookmark(for: url)
+            repos[index].pathHint = url.path
+            try persistence.save(repos)
+            analyze(id)
+        } catch {
+            states[id] = .failed("\(error)")
+        }
+    }
+
     // MARK: - Analysis
 
     public func analyze(_ id: UUID) {
@@ -83,7 +100,11 @@ public final class WorkspaceStore {
         tasks[id] = Task { [weak self] in
             guard let self else { return }
             do {
-                let (url, _) = try RepoAccess.resolve(repo.bookmark)
+                guard let (url, _) = try? RepoAccess.resolve(repo.bookmark),
+                      FileManager.default.fileExists(atPath: url.path) else {
+                    self.states[id] = .needsRelink
+                    return
+                }
                 try await RepoAccess.withAccess(to: url) { url in
                     for try await event in engine.analyze(repoAt: url) {
                         await self.apply(event, to: id)

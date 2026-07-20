@@ -22,8 +22,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       dependency graph, neighborhood); `CygnusWorkspace` facade.
       *Deferred to E6: FSEvents watch, `cygnus verify`, diff-between-
       revisions query, derived-layer rollups.* *(2026-07-19)*
-- [ ] **E6** — Hardening: FSEvents watch, `cygnus verify`, revision
-      diff query, derived rollups, fuzzy renames, IndexStoreDB spike.
+- [~] **E6** — Hardening. Done: FSEvents watch, `cygnus verify`,
+      revision diff query, no-op-revision suppression *(2026-07-19)*.
+      Remaining: derived rollups, fuzzy renames, IndexStoreDB spike.
 
 ## Shell
 
@@ -45,4 +46,6 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       Outline|Flat|3D picker. *Deferred: 60 fps @ 2k-node perf gate
       needs a manual GUI run; progressive 3D layout animation;
       LowLevelMesh dynamic edges.* *(2026-07-19)*
-- [ ] **S6** — Real-engine integration, dogfood, first tagged build.
+- [~] **S6** — Polish. Done: needs-relink flow, Settings scene,
+      constellation app icon *(2026-07-19)*. Remaining: manual GUI
+      run + 60 fps gate (human), first tagged build.

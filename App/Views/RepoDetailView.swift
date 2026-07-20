@@ -32,8 +32,28 @@ struct RepoDetailView: View {
                     if let id = store.selectedRepo { store.analyze(id) }
                 }
             }
+        case .needsRelink:
+            ContentUnavailableView {
+                Label("Folder Not Found", systemImage: "questionmark.folder")
+            } description: {
+                Text("The repository folder moved or was deleted. Locate it to continue.")
+            } actions: {
+                Button("Locate Folder…") { relink() }
+                    .buttonStyle(.borderedProminent)
+            }
         case .ready(let snapshot):
             ReadyContentView(snapshot: snapshot)
+        }
+    }
+
+    private func relink() {
+        guard let id = store.selectedRepo else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.message = "Locate the repository folder"
+        if panel.runModal() == .OK, let url = panel.url {
+            store.relink(id, to: url)
         }
     }
 }
