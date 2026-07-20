@@ -85,21 +85,34 @@ struct ReadyContentView: View {
                 }
                 .pickerStyle(.segmented)
             }
+            ToolbarItem {
+                Menu {
+                    Toggle("Show External Modules", isOn: $store.showExternalModules)
+                    Text("Apple frameworks and language runtimes are never charted.")
+                } label: {
+                    Label("Filters", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
         }
     }
 }
 
 struct DependencyGraphView: View {
+    @Environment(WorkspaceStore.self) private var store
     let snapshot: GraphSnapshot
     let mode: WorkspaceStore.ViewMode
 
     var body: some View {
-        let scene = GraphScene.dependencies(from: snapshot)
+        let scene = GraphScene.dependencies(from: snapshot,
+                                            showExternal: store.showExternalModules)
         if scene.nodes.isEmpty {
-            ContentUnavailableView("No Import Edges", systemImage: "point.3.filled.connected.trianglepath.dotted",
-                                   description: Text("This repository has no analyzable imports yet."))
+            ContentUnavailableView(
+                "No Internal Imports",
+                systemImage: "point.3.filled.connected.trianglepath.dotted",
+                description: Text("Only project-internal imports are charted. " +
+                                  "Try Filters → Show External Modules."))
         } else if mode == .space {
-            SpaceGraphView(scene: scene)
+            Orbit3DView(scene: scene)
         } else {
             FlatGraphView(scene: scene)
         }
