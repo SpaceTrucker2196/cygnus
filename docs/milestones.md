@@ -36,6 +36,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       progress UI with cancel/retry. *(2026-07-19)*
 - [x] **S3** — Outline (containment tree), entity inspector with
       clickable in/out edges, search. *(2026-07-19)*
-- [ ] **S4** — Flat Canvas graph view + LayoutEngine.
+- [x] **S4** — Flat Canvas graph view + LayoutEngine (deterministic
+      Fruchterman–Reingold, progressive frames, zoom/pan/select;
+      Outline|Graph picker). *Deferred: Barnes–Hut for >2k-node
+      scenes.* *(2026-07-19)*
 - [ ] **S5** — RealityKit 3D. Perf gate: 60 fps @ 2k nodes / 6k edges.
 - [ ] **S6** — Real-engine integration, dogfood, first tagged build.

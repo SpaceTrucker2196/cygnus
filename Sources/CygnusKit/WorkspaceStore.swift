@@ -20,9 +20,15 @@ public final class WorkspaceStore {
     /// Snapshot indexes, built once per finished analysis — views
     /// never rebuild them.
     public private(set) var indices: [UUID: SnapshotIndex] = [:]
+    public enum ViewMode: String, CaseIterable, Sendable {
+        case outline = "Outline"
+        case graph = "Graph"
+    }
+
     public var selectedRepo: UUID?
     public var selectedNode: String?
     public var searchText: String = ""
+    public var viewMode: ViewMode = .outline
 
     private let engine: any GraphEngine
     private let persistence: WorkspacePersistence

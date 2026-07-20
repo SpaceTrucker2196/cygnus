@@ -47,3 +47,10 @@
   test runs the real engine on a fixture repo. First manual GUI run
   still pending (needs a human to pick a folder in the open panel).
   Next: S4 Flat Canvas graph view + LayoutEngine, then S5 RealityKit.
+- S4 complete: `GraphScene` (dependency projection, degree),
+  `LayoutEngine` (seeded deterministic Fruchterman–Reingold,
+  progressive AsyncStream frames, cancellable, detached off main),
+  `FlatGraphView` Canvas renderer (fit-to-bounds transform, zoom/pan,
+  double-click reset, nearest-node selection synced with inspector,
+  degree-sized nodes, adaptive labels), Outline|Graph toolbar picker.
+  8 kit tests green incl. layout determinism.
