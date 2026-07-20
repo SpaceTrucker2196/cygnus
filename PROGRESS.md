@@ -10,3 +10,10 @@
   CygnusKit packages, xcodegen app shell.
 - Dependency audits recorded in MISSION.md §5 (GRDB, swift-syntax,
   SwiftTreeSitter + grammars).
+- E0 spike (tree-sitter): python + c grammars parse under Swift 6,
+  including error-tolerant recovery. tree-sitter-python pinned exact
+  at 0.23.6 — 0.25.0's manifest drops the external scanner under
+  SwiftPM's sandbox (relative-path probe) and fails to link.
+- E0 spike (storage): interval-schema benchmark green — 43 µs current
+  neighborhood lookups, 171 ms for a 10k-fact revision commit at 1M
+  rows. Numbers in docs/schema.md. E0 complete.

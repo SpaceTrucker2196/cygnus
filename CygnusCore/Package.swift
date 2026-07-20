@@ -63,7 +63,7 @@ let package = Package(
             "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusDerive", "CygnusQuery",
         ]),
 
-        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine"]),
+        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore"]),
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
