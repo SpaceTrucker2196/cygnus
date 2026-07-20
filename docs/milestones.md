@@ -5,9 +5,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
 
 ## Engine
 
-- [ ] **E0** — Scaffold + de-risk spikes: tree-sitter under Swift 6;
-      GRDB interval-schema 1M-row benchmark. *(scaffold done 2026-07-19;
-      spikes open)*
+- [x] **E0** — Scaffold + de-risk spikes: tree-sitter under Swift 6;
+      GRDB interval-schema 1M-row benchmark (results in
+      `docs/schema.md`). *(2026-07-19)*
 - [ ] **E1** — Graph model + store: schema, revision transactions,
       provenance links, property-based append-only/isolation tests.
 - [ ] **E2** — Providers: discovery, LocalFS + git, CAS, manifest diff,
