@@ -31,7 +31,12 @@ struct Orbit3DView: View {
         }
         .task(id: scene) {
             frame = nil
-            frame = await Layout3D.solve(scene).normalized(toRadius: 320)
+            // Progressive: draw (and orbit) from the first frames
+            // while the solver settles — never block on the full
+            // O(n²) solve.
+            for await next in Layout3D.frames(scene) {
+                frame = next.normalized(toRadius: 320)
+            }
         }
         .overlay(alignment: .top) {
             GraphControlBar(zoom: $zoom, labelMode: $labelMode,

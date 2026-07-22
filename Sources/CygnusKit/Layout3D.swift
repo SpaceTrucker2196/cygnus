@@ -8,12 +8,62 @@ import Foundation
 
 public struct LayoutFrame3D: Sendable {
     public let positions: [String: SIMD3<Double>]
-    public init(positions: [String: SIMD3<Double>]) {
+    public let settled: Bool
+
+    public init(positions: [String: SIMD3<Double>], settled: Bool = true) {
         self.positions = positions
+        self.settled = settled
+    }
+
+    /// Center on the centroid and scale so the farthest node sits at
+    /// `radius`. Graph size varies by orders of magnitude; the camera
+    /// frames a known radius instead of chasing the layout.
+    public func normalized(toRadius radius: Double) -> LayoutFrame3D {
+        guard !positions.isEmpty else { return self }
+        let centroid = positions.values.reduce(SIMD3<Double>.zero, +)
+            / Double(positions.count)
+        var maxDistance = 0.0
+        for position in positions.values {
+            let d = position - centroid
+            maxDistance = max(maxDistance, (d * d).sum().squareRoot())
+        }
+        let scale = maxDistance > 0 ? radius / maxDistance : 1
+        return LayoutFrame3D(positions: positions.mapValues { ($0 - centroid) * scale },
+                             settled: settled)
     }
 }
 
 public enum Layout3D {
+    /// Iteration budget scaled to graph size: the O(n²) repulsion
+    /// step is the wall-clock driver, and big graphs converge to a
+    /// usable shape in fewer steps than small ones need for polish.
+    public static func iterationBudget(nodeCount: Int) -> Int {
+        switch nodeCount {
+        case ..<200: 300
+        case ..<600: 180
+        default: 100
+        }
+    }
+
+    /// Progressive frames from a detached solver — the renderer draws
+    /// (and orbits) immediately while the layout settles, exactly
+    /// like the Flat view's LayoutEngine.
+    public static func frames(_ scene: GraphScene, seed: UInt64 = 0xC516,
+                              emitEvery: Int = 5) -> AsyncStream<LayoutFrame3D> {
+        AsyncStream { continuation in
+            let task = Task.detached(priority: .userInitiated) {
+                solveSync(scene, seed: seed,
+                          maxIterations: iterationBudget(nodeCount: scene.nodes.count),
+                          emitEvery: emitEvery) { frame in
+                    continuation.yield(frame)
+                    return !Task.isCancelled
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Solve to a settled frame off the main actor.
     public static func solve(_ scene: GraphScene, seed: UInt64 = 0xC516,
                              maxIterations: Int = 300) async -> LayoutFrame3D {
@@ -24,10 +74,23 @@ public enum Layout3D {
     }
 
     public static func solveSync(_ scene: GraphScene, seed: UInt64,
-                          maxIterations: Int) -> LayoutFrame3D {
+                                 maxIterations: Int) -> LayoutFrame3D {
+        var final = LayoutFrame3D(positions: [:], settled: true)
+        solveSync(scene, seed: seed, maxIterations: maxIterations, emitEvery: maxIterations) {
+            final = $0
+            return true
+        }
+        return final
+    }
+
+    static func solveSync(_ scene: GraphScene, seed: UInt64, maxIterations: Int,
+                          emitEvery: Int, emit: (LayoutFrame3D) -> Bool) {
         let ids = scene.nodes.map(\.id)
         let n = ids.count
-        guard n > 0 else { return LayoutFrame3D(positions: [:]) }
+        guard n > 0 else {
+            _ = emit(LayoutFrame3D(positions: [:], settled: true))
+            return
+        }
         let indexByID = Dictionary(uniqueKeysWithValues: ids.enumerated().map { ($1, $0) })
         let edges: [(Int, Int)] = scene.edges.compactMap {
             guard let a = indexByID[$0.from], let b = indexByID[$0.to], a != b else { return nil }
@@ -47,7 +110,7 @@ public enum Layout3D {
         let k = 60.0
         var temperature = 0.12 * Double(n).squareRoot() * k
 
-        for _ in 0..<maxIterations {
+        for iteration in 0..<maxIterations {
             var displacement = [SIMD3<Double>](repeating: .zero, count: n)
 
             for i in 0..<n {
@@ -83,9 +146,14 @@ public enum Layout3D {
                 maxStep = max(maxStep, step)
             }
             temperature = max(temperature * 0.95, 1.0)
-            if maxStep < 0.5 { break }
-        }
 
-        return LayoutFrame3D(positions: Dictionary(uniqueKeysWithValues: zip(ids, pos)))
+            let settled = maxStep < 0.5 || iteration == maxIterations - 1
+            if settled || iteration % emitEvery == 0 {
+                let frame = LayoutFrame3D(
+                    positions: Dictionary(uniqueKeysWithValues: zip(ids, pos)),
+                    settled: settled)
+                if !emit(frame) || settled { return }
+            }
+        }
     }
 }
