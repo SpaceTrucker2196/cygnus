@@ -158,7 +158,11 @@ public final class WorkspaceStore {
             states[id] = .analyzing(phase: current.phase, progress: value,
                                     partial: current.partial)
         case .partial(let snapshot):
-            indices[id] = SnapshotIndex(snapshot)
+            // Index rebuilds are O(n) per partial; above this size the
+            // outline waits for the final snapshot.
+            if snapshot.nodes.count <= 5000 {
+                indices[id] = SnapshotIndex(snapshot)
+            }
             states[id] = .analyzing(phase: current.phase, progress: current.progress,
                                     partial: snapshot)
         case .partialCounts:
