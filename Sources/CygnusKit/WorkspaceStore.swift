@@ -10,7 +10,9 @@ import Observation
 public final class WorkspaceStore {
     public enum AnalysisState: Equatable {
         case idle
-        case analyzing(phase: String, progress: Double?)
+        /// `partial` is the growing snapshot rendered live while the
+        /// engine works.
+        case analyzing(phase: String, progress: Double?, partial: GraphSnapshot? = nil)
         case ready(GraphSnapshot)
         case failed(String)
         /// Bookmark no longer resolves (folder moved or deleted) —
@@ -141,13 +143,24 @@ public final class WorkspaceStore {
     }
 
     private func apply(_ event: AnalysisEvent, to id: UUID) {
+        var current: (phase: String, progress: Double?, partial: GraphSnapshot?) {
+            if case .analyzing(let phase, let progress, let partial) = states[id] {
+                (phase, progress, partial)
+            } else {
+                ("working", nil, nil)
+            }
+        }
         switch event {
         case .phase(let phase):
-            let progress: Double? = if case .analyzing(_, let p) = states[id] { p } else { nil }
-            states[id] = .analyzing(phase: phase, progress: progress)
+            states[id] = .analyzing(phase: phase, progress: current.progress,
+                                    partial: current.partial)
         case .progress(let value):
-            let phase: String = if case .analyzing(let p, _) = states[id] { p } else { "working" }
-            states[id] = .analyzing(phase: phase, progress: value)
+            states[id] = .analyzing(phase: current.phase, progress: value,
+                                    partial: current.partial)
+        case .partial(let snapshot):
+            indices[id] = SnapshotIndex(snapshot)
+            states[id] = .analyzing(phase: current.phase, progress: current.progress,
+                                    partial: snapshot)
         case .partialCounts:
             break
         case .finished(let snapshot):

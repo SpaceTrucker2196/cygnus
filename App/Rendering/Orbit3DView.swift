@@ -12,6 +12,7 @@ struct Orbit3DView: View {
     let scene: GraphScene
 
     @State private var frame: LayoutFrame3D?
+    @State private var rawPositions: [String: SIMD3<Double>] = [:]
     @State private var yaw: Double = 0.7
     @State private var pitch: Double = 0.3
     @State private var zoom: CGFloat = 1
@@ -30,11 +31,11 @@ struct Orbit3DView: View {
             }
         }
         .task(id: scene) {
-            frame = nil
-            // Progressive: draw (and orbit) from the first frames
-            // while the solver settles — never block on the full
-            // O(n²) solve.
-            for await next in Layout3D.frames(scene) {
+            // Progressive + warm-started: draw (and orbit) from the
+            // first frames; when the scene grows mid-analysis, new
+            // nodes join the existing shape.
+            for await next in Layout3D.frames(scene, initial: rawPositions) {
+                rawPositions = next.positions
                 frame = next.normalized(toRadius: 320)
             }
         }

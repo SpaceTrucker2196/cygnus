@@ -2,6 +2,8 @@ import Foundation
 import CygnusGraph
 import CygnusStore
 import CygnusQuery
+import CygnusObservation
+import CygnusProviders
 import CygnusEngine
 
 // The real engine behind the GraphEngine seam. Registers + indexes a
@@ -26,13 +28,30 @@ public struct WorkspaceGraphEngine: GraphEngine {
                     let workspace = try CygnusWorkspace(directory: directory)
                     continuation.yield(.phase("scanning"))
                     let repoID = try await workspace.register(path: url)
+                    let displayName = url.lastPathComponent
+
+                    // Accumulates extraction results and projects a
+                    // partial snapshot every batch, so the graph
+                    // grows on screen while the engine works.
+                    let builder = PartialSnapshotBuilder(
+                        repository: repoID, displayName: displayName)
+
                     let result = try await workspace.index(repoID) { progress in
                         switch progress.phase {
+                        case "snapshot":
+                            if let files = progress.manifest,
+                               let partial = builder.setManifest(files) {
+                                continuation.yield(.partial(partial))
+                            }
                         case "extract":
                             continuation.yield(.phase("extracting"))
                             if progress.total > 0 {
                                 continuation.yield(.progress(
                                     Double(progress.completed) / Double(progress.total)))
+                            }
+                            if let extracted = progress.extracted,
+                               let partial = builder.add(extracted) {
+                                continuation.yield(.partial(partial))
                             }
                         case "resolve": continuation.yield(.phase("resolving"))
                         case "commit": continuation.yield(.phase("committing"))

@@ -31,8 +31,11 @@ struct FlatGraphView: View {
                 }
         }
         .task(id: scene) {
-            frame = .empty
-            for await next in LayoutEngine(scene: scene).frames() {
+            // Warm-start from wherever nodes already are: when the
+            // scene grows during analysis, new nodes join a stable
+            // layout instead of restarting it.
+            for await next in LayoutEngine(scene: scene,
+                                           initial: frame.positions).frames() {
                 frame = next
             }
         }

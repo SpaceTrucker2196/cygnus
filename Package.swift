@@ -20,6 +20,8 @@ let package = Package(
             .product(name: "CygnusGraph", package: "CygnusCore"),
             .product(name: "CygnusStore", package: "CygnusCore"),
             .product(name: "CygnusQuery", package: "CygnusCore"),
+            .product(name: "CygnusObservation", package: "CygnusCore"),
+            .product(name: "CygnusProviders", package: "CygnusCore"),
         ]),
         .testTarget(name: "CygnusKitTests", dependencies: ["CygnusKit"]),
     ]

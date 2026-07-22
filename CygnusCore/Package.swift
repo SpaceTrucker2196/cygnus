@@ -9,6 +9,8 @@ let package = Package(
         .library(name: "CygnusGraph", targets: ["CygnusGraph"]),
         .library(name: "CygnusStore", targets: ["CygnusStore"]),
         .library(name: "CygnusQuery", targets: ["CygnusQuery"]),
+        .library(name: "CygnusObservation", targets: ["CygnusObservation"]),
+        .library(name: "CygnusProviders", targets: ["CygnusProviders"]),
         .executable(name: "cygnus", targets: ["cygnus"]),
     ],
     dependencies: [
