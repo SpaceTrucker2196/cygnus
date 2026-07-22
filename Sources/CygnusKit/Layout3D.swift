@@ -49,10 +49,11 @@ public enum Layout3D {
     /// (and orbits) immediately while the layout settles, exactly
     /// like the Flat view's LayoutEngine.
     public static func frames(_ scene: GraphScene, seed: UInt64 = 0xC516,
+                              initial: [String: SIMD3<Double>] = [:],
                               emitEvery: Int = 5) -> AsyncStream<LayoutFrame3D> {
         AsyncStream { continuation in
             let task = Task.detached(priority: .userInitiated) {
-                solveSync(scene, seed: seed,
+                solveSync(scene, seed: seed, initial: initial,
                           maxIterations: iterationBudget(nodeCount: scene.nodes.count),
                           emitEvery: emitEvery) { frame in
                     continuation.yield(frame)
@@ -83,7 +84,9 @@ public enum Layout3D {
         return final
     }
 
-    static func solveSync(_ scene: GraphScene, seed: UInt64, maxIterations: Int,
+    static func solveSync(_ scene: GraphScene, seed: UInt64,
+                          initial: [String: SIMD3<Double>] = [:],
+                          maxIterations: Int,
                           emitEvery: Int, emit: (LayoutFrame3D) -> Bool) {
         let ids = scene.nodes.map(\.id)
         let n = ids.count
@@ -99,7 +102,12 @@ public enum Layout3D {
 
         // Deterministic initial placement: jittered spiral on a sphere.
         var rng = SplitMix64(seed: seed)
+        var seededCount = 0
         var pos = (0..<n).map { i -> SIMD3<Double> in
+            if let prior = initial[ids[i]] {
+                seededCount += 1
+                return prior
+            }
             let golden = 2 * Double.pi * Double(i) / 1.618_033_988_75
             let y = 1 - 2 * (Double(i) + 0.5) / Double(n)
             let r = (1 - y * y).squareRoot()
@@ -108,24 +116,42 @@ public enum Layout3D {
         }
 
         let k = 60.0
-        var temperature = 0.12 * Double(n).squareRoot() * k
+        let cutoff = 2.5 * k
+        let warmStarted = seededCount * 2 >= n
+        var temperature = (warmStarted ? 0.03 : 0.12) * Double(n).squareRoot() * k
+        struct Cell: Hashable { let x, y, z: Int }
 
         for iteration in 0..<maxIterations {
             var displacement = [SIMD3<Double>](repeating: .zero, count: n)
 
+            var grid: [Cell: [Int]] = [:]
+            grid.reserveCapacity(n)
             for i in 0..<n {
-                for j in (i + 1)..<n {
-                    var delta = pos[i] - pos[j]
-                    var distance = (delta * delta).sum().squareRoot()
-                    if distance < 0.01 {
-                        delta = SIMD3(Double(rng.next(upperBound: 100)) / 100 - 0.5,
-                                      Double(rng.next(upperBound: 100)) / 100 - 0.5,
-                                      Double(rng.next(upperBound: 100)) / 100 - 0.5)
-                        distance = 0.87
+                grid[Cell(x: Int(pos[i].x / cutoff), y: Int(pos[i].y / cutoff),
+                          z: Int(pos[i].z / cutoff)), default: []].append(i)
+            }
+            for i in 0..<n {
+                let cell = Cell(x: Int(pos[i].x / cutoff), y: Int(pos[i].y / cutoff),
+                                z: Int(pos[i].z / cutoff))
+                for dx in -1...1 {
+                    for dy in -1...1 {
+                        for dz in -1...1 {
+                            guard let bucket = grid[Cell(x: cell.x + dx, y: cell.y + dy,
+                                                         z: cell.z + dz)] else { continue }
+                            for j in bucket where j != i {
+                                var delta = pos[i] - pos[j]
+                                var distance = (delta * delta).sum().squareRoot()
+                                if distance < 0.01 {
+                                    delta = SIMD3(Double(rng.next(upperBound: 100)) / 100 - 0.5,
+                                                  Double(rng.next(upperBound: 100)) / 100 - 0.5,
+                                                  Double(rng.next(upperBound: 100)) / 100 - 0.5)
+                                    distance = 0.87
+                                }
+                                guard distance < cutoff else { continue }
+                                displacement[i] += delta * ((k * k / distance) / distance)
+                            }
+                        }
                     }
-                    let force = (k * k / distance) / distance
-                    displacement[i] += delta * force
-                    displacement[j] -= delta * force
                 }
             }
 

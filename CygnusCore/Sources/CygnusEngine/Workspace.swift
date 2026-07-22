@@ -14,6 +14,27 @@ public struct IndexProgress: Sendable {
     public let phase: String
     public let completed: Int
     public let total: Int
+    /// The full manifest, delivered once with the "snapshot" phase —
+    /// consumers can render the physical tree before extraction.
+    public let manifest: [SnapshotFile]?
+    /// One file's extraction result, delivered live during the
+    /// "extract" phase — consumers can grow the graph in realtime.
+    public let extracted: ExtractedFile?
+
+    public init(phase: String, completed: Int, total: Int,
+                manifest: [SnapshotFile]? = nil, extracted: ExtractedFile? = nil) {
+        self.phase = phase
+        self.completed = completed
+        self.total = total
+        self.manifest = manifest
+        self.extracted = extracted
+    }
+}
+
+public struct ExtractedFile: Sendable {
+    public let file: SnapshotFile
+    public let language: String
+    public let observations: [Observation]
 }
 
 public struct IndexResult: Sendable {
@@ -74,9 +95,10 @@ public actor CygnusWorkspace {
         else { throw WorkspaceError.unknownRepository(repoID) }
         let root = URL(fileURLWithPath: rootPath)
 
-        progress?(IndexProgress(phase: "snapshot", completed: 0, total: 1))
         let provider = LocalFSProvider(root: root, contentStore: contentStore)
         let manifest = try provider.snapshot()
+        progress?(IndexProgress(phase: "snapshot", completed: 1, total: 1,
+                                manifest: manifest.files))
 
         // Previous manifest from the last stored snapshot.
         let previous = try store.latestIndexedSnapshot(repository: repoID).map { _, files in
@@ -126,7 +148,10 @@ public actor CygnusWorkspace {
             for try await result in group {
                 extracted.append(result)
                 completed += 1
-                progress?(IndexProgress(phase: "extract", completed: completed, total: total))
+                progress?(IndexProgress(
+                    phase: "extract", completed: completed, total: total,
+                    extracted: ExtractedFile(file: result.0, language: result.1,
+                                             observations: result.2)))
             }
         }
 

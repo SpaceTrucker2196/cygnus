@@ -20,8 +20,17 @@ struct RepoDetailView: View {
                 }
                 .buttonStyle(.borderedProminent)
             }
-        case .analyzing(let phase, let progress):
-            AnalysisProgressView(phase: phase, progress: progress)
+        case .analyzing(let phase, let progress, let partial):
+            if let partial {
+                // Realtime: render the growing graph, progress rides
+                // on top.
+                ReadyContentView(snapshot: partial)
+                    .overlay(alignment: .bottom) {
+                        AnalyzingBadge(phase: phase, progress: progress)
+                    }
+            } else {
+                AnalysisProgressView(phase: phase, progress: progress)
+            }
         case .failed(let message):
             ContentUnavailableView {
                 Label("Analysis Failed", systemImage: "exclamationmark.triangle")
@@ -116,6 +125,31 @@ struct DependencyGraphView: View {
         } else {
             FlatGraphView(scene: scene)
         }
+    }
+}
+
+struct AnalyzingBadge: View {
+    @Environment(WorkspaceStore.self) private var store
+    let phase: String
+    let progress: Double?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if let progress {
+                ProgressView(value: progress).frame(width: 120)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            Text(phase.capitalized).font(.caption)
+            Button("Cancel") {
+                if let id = store.selectedRepo { store.cancel(id) }
+            }
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(.regularMaterial, in: Capsule())
+        .padding(10)
     }
 }
 

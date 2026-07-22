@@ -5,9 +5,10 @@ import Foundation
 // is cancellable, and is deterministic for a given scene + seed so
 // layouts are testable and stable across runs.
 //
-// Fruchterman–Reingold with cooling. Repulsion is O(n²) per step —
-// fine at Flat-view scale (hundreds to ~2k nodes); Barnes–Hut is the
-// designated upgrade when scenes outgrow it (docs/architecture.md).
+// Fruchterman–Reingold with cooling. Repulsion uses a uniform spatial
+// grid with a cutoff radius — near-linear per step — so debug builds
+// stay fluid at real-repo scale. Warm-start: pass previous positions
+// and new nodes join a stable layout instead of restarting it.
 
 public struct LayoutFrame: Sendable {
     public let positions: [String: SIMD2<Double>]
@@ -24,10 +25,13 @@ public struct LayoutFrame: Sendable {
 public struct LayoutEngine: Sendable {
     private let scene: GraphScene
     private let seed: UInt64
+    private let initial: [String: SIMD2<Double>]
 
-    public init(scene: GraphScene, seed: UInt64 = 0xC516) {
+    public init(scene: GraphScene, seed: UInt64 = 0xC516,
+                initial: [String: SIMD2<Double>] = [:]) {
         self.scene = scene
         self.seed = seed
+        self.initial = initial
     }
 
     /// Progressive layout frames, ending with a settled frame (or on
@@ -36,9 +40,10 @@ public struct LayoutEngine: Sendable {
                        emitEvery: Int = 5) -> AsyncStream<LayoutFrame> {
         let scene = self.scene
         let seed = self.seed
+        let initial = self.initial
         return AsyncStream { continuation in
             let task = Task.detached(priority: .userInitiated) {
-                Self.run(scene: scene, seed: seed,
+                Self.run(scene: scene, seed: seed, initial: initial,
                          maxIterations: maxIterations, emitEvery: emitEvery) { frame in
                     continuation.yield(frame)
                     return !Task.isCancelled
@@ -50,8 +55,10 @@ public struct LayoutEngine: Sendable {
     }
 
     /// Synchronous solver core. `emit` returns false to stop early.
-    static func run(scene: GraphScene, seed: UInt64, maxIterations: Int,
-                    emitEvery: Int, emit: (LayoutFrame) -> Bool) {
+    static func run(scene: GraphScene, seed: UInt64,
+                    initial: [String: SIMD2<Double>] = [:],
+                    maxIterations: Int, emitEvery: Int,
+                    emit: (LayoutFrame) -> Bool) {
         let ids = scene.nodes.map(\.id)
         let n = ids.count
         guard n > 0 else {
@@ -64,40 +71,64 @@ public struct LayoutEngine: Sendable {
             return (a, b)
         }
 
-        // Deterministic initial placement: jittered ring.
+        // Deterministic initial placement: warm-start from prior
+        // positions where available, jittered ring for new nodes.
         var rng = SplitMix64(seed: seed)
+        var seededCount = 0
         var pos = (0..<n).map { i -> SIMD2<Double> in
+            if let prior = initial[ids[i]] {
+                seededCount += 1
+                return prior
+            }
             let angle = 2 * .pi * Double(i) / Double(n)
             let radius = 200.0 + Double(rng.next(upperBound: 1000)) / 20.0
             return SIMD2(radius * cos(angle), radius * sin(angle))
         }
 
-        let k = 60.0                                  // ideal edge length
-        var temperature = 0.12 * Double(n).squareRoot() * k
+        let k = 60.0
+        let cutoff = 2.5 * k
+        let warmStarted = seededCount * 2 >= n
+        var temperature = (warmStarted ? 0.03 : 0.12) * Double(n).squareRoot() * k
         let settleThreshold = 0.5
+
+        struct Cell: Hashable { let x, y: Int }
 
         for iteration in 0..<maxIterations {
             var displacement = [SIMD2<Double>](repeating: .zero, count: n)
 
+            // Grid-bucketed repulsion: only pairs within the cutoff
+            // interact; one-sided accumulation over neighbor cells.
+            var grid: [Cell: [Int]] = [:]
+            grid.reserveCapacity(n)
             for i in 0..<n {
-                for j in (i + 1)..<n {
-                    var delta = pos[i] - pos[j]
-                    var distance = (delta * delta).sum().squareRoot()
-                    if distance < 0.01 {
-                        delta = SIMD2(Double(rng.next(upperBound: 100)) / 100 - 0.5,
-                                      Double(rng.next(upperBound: 100)) / 100 - 0.5)
-                        distance = 0.71
+                grid[Cell(x: Int(pos[i].x / cutoff), y: Int(pos[i].y / cutoff)), default: []]
+                    .append(i)
+            }
+            for i in 0..<n {
+                let cell = Cell(x: Int(pos[i].x / cutoff), y: Int(pos[i].y / cutoff))
+                for dx in -1...1 {
+                    for dy in -1...1 {
+                        guard let bucket = grid[Cell(x: cell.x + dx, y: cell.y + dy)]
+                        else { continue }
+                        for j in bucket where j != i {
+                            var delta = pos[i] - pos[j]
+                            var distance = (delta * delta).sum().squareRoot()
+                            if distance < 0.01 {
+                                delta = SIMD2(Double(rng.next(upperBound: 100)) / 100 - 0.5,
+                                              Double(rng.next(upperBound: 100)) / 100 - 0.5)
+                                distance = 0.71
+                            }
+                            guard distance < cutoff else { continue }
+                            displacement[i] += delta * ((k * k / distance) / distance)
+                        }
                     }
-                    let force = (k * k / distance) / distance   // repulsion / |delta|
-                    displacement[i] += delta * force
-                    displacement[j] -= delta * force
                 }
             }
 
             for (a, b) in edges {
                 let delta = pos[a] - pos[b]
                 let distance = max((delta * delta).sum().squareRoot(), 0.01)
-                let force = (distance / k)                       // attraction / |delta|
+                let force = (distance / k)
                 displacement[a] -= delta * force
                 displacement[b] += delta * force
             }

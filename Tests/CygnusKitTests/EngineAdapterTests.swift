@@ -22,10 +22,14 @@ import Foundation
             .appendingPathComponent("cygnus-adapter-ws-\(UUID().uuidString)"))
 
         var phases: [String] = []
+        var partials: [GraphSnapshot] = []
         var snapshot: GraphSnapshot?
         for try await event in engine.analyze(repoAt: root) {
             switch event {
             case .phase(let phase): phases.append(phase)
+            case .partial(let partial):
+                #expect(snapshot == nil, "partials must precede finished")
+                partials.append(partial)
             case .finished(let result): snapshot = result
             default: break
             }
@@ -34,6 +38,13 @@ import Foundation
         let result = try #require(snapshot)
         #expect(phases.first == "scanning")
         #expect(phases.contains("projecting"))
+
+        // Realtime rendering: at least the physical-tree partial
+        // arrived before the final snapshot, and partials only grow.
+        #expect(!partials.isEmpty)
+        #expect(partials.first!.nodes.contains { $0.kind == "core:file" })
+        let counts = partials.map(\.nodes.count)
+        #expect(counts == counts.sorted())
 
         let index = SnapshotIndex(result)
         #expect(index.trees.count == 1)

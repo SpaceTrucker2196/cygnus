@@ -15,6 +15,10 @@ public enum AnalysisEvent: Sendable {
     case phase(String)
     case progress(Double)
     case partialCounts(entities: Int, edges: Int)
+    /// A growing, incomplete snapshot emitted while analysis runs —
+    /// views render it immediately so the graph builds up in
+    /// realtime instead of appearing all at once.
+    case partial(GraphSnapshot)
     case finished(GraphSnapshot)
 }
 
