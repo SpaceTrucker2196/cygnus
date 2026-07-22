@@ -36,12 +36,16 @@ public struct LayoutEngine: Sendable {
 
     /// Progressive layout frames, ending with a settled frame (or on
     /// cancellation). Solving runs detached off the main actor.
+    /// Buffering keeps only the newest frame: a renderer that falls
+    /// behind skips straight to the latest layout — stale frames are
+    /// never queued (each one is a full position table; queueing them
+    /// is how memory blows up on big graphs).
     public func frames(maxIterations: Int = 300,
                        emitEvery: Int = 5) -> AsyncStream<LayoutFrame> {
         let scene = self.scene
         let seed = self.seed
         let initial = self.initial
-        return AsyncStream { continuation in
+        return AsyncStream(LayoutFrame.self, bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task.detached(priority: .userInitiated) {
                 Self.run(scene: scene, seed: seed, initial: initial,
                          maxIterations: maxIterations, emitEvery: emitEvery) { frame in
@@ -90,6 +94,9 @@ public struct LayoutEngine: Sendable {
         let warmStarted = seededCount * 2 >= n
         var temperature = (warmStarted ? 0.03 : 0.12) * Double(n).squareRoot() * k
         let settleThreshold = 0.5
+        // Emitting allocates a full position table — rate-limit it.
+        let clock = ContinuousClock()
+        var lastEmit = clock.now - .seconds(1)
 
         struct Cell: Hashable { let x, y: Int }
 
@@ -145,7 +152,10 @@ public struct LayoutEngine: Sendable {
             temperature = max(temperature * 0.95, 1.0)
 
             let settled = maxStep < settleThreshold || iteration == maxIterations - 1
-            if settled || iteration % emitEvery == 0 {
+            let due = iteration % emitEvery == 0
+                && clock.now - lastEmit >= .milliseconds(80)
+            if settled || due {
+                lastEmit = clock.now
                 let frame = LayoutFrame(
                     positions: Dictionary(uniqueKeysWithValues: zip(ids, pos)),
                     settled: settled)

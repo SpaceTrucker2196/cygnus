@@ -15,12 +15,12 @@ final class PartialSnapshotBuilder: @unchecked Sendable {
     private let lock = NSLock()
     private var manifest: SnapshotManifest?
     private var files: [FileObservations] = []
-    private var sinceLastEmit = 0
     private var lastEmit = ContinuousClock.now
 
-    /// Emit a partial at most this often (whichever comes first).
-    private static let batchSize = 12
-    private static let interval = Duration.milliseconds(300)
+    /// Emit a partial at most this often. Each partial is a full
+    /// graph copy — time-only throttling keeps peak memory flat no
+    /// matter how fast extraction runs.
+    private static let interval = Duration.milliseconds(800)
 
     init(repository: RepositoryID, displayName: String) {
         self.repository = repository
@@ -42,16 +42,12 @@ final class PartialSnapshotBuilder: @unchecked Sendable {
         files.append(FileObservations(
             file: extracted.file, language: extracted.language,
             observations: extracted.observations.map { (ObservationID(0), $0) }))
-        sinceLastEmit += 1
-        let due = sinceLastEmit >= Self.batchSize
-            || ContinuousClock.now - lastEmit >= Self.interval
-        guard due else { return nil }
+        guard ContinuousClock.now - lastEmit >= Self.interval else { return nil }
         return buildLocked()
     }
 
     private func buildLocked() -> GraphSnapshot? {
         guard let manifest else { return nil }
-        sinceLastEmit = 0
         lastEmit = .now
         let changes = Resolver.resolve(
             repository: repository, displayName: displayName,

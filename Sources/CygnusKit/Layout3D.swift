@@ -51,7 +51,9 @@ public enum Layout3D {
     public static func frames(_ scene: GraphScene, seed: UInt64 = 0xC516,
                               initial: [String: SIMD3<Double>] = [:],
                               emitEvery: Int = 5) -> AsyncStream<LayoutFrame3D> {
-        AsyncStream { continuation in
+        // Newest-only buffering: a slow consumer skips to the latest
+        // frame instead of queueing full position tables.
+        AsyncStream(LayoutFrame3D.self, bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task.detached(priority: .userInitiated) {
                 solveSync(scene, seed: seed, initial: initial,
                           maxIterations: iterationBudget(nodeCount: scene.nodes.count),
@@ -119,6 +121,8 @@ public enum Layout3D {
         let cutoff = 2.5 * k
         let warmStarted = seededCount * 2 >= n
         var temperature = (warmStarted ? 0.03 : 0.12) * Double(n).squareRoot() * k
+        let clock = ContinuousClock()
+        var lastEmit = clock.now - .seconds(1)
         struct Cell: Hashable { let x, y, z: Int }
 
         for iteration in 0..<maxIterations {
@@ -174,7 +178,10 @@ public enum Layout3D {
             temperature = max(temperature * 0.95, 1.0)
 
             let settled = maxStep < 0.5 || iteration == maxIterations - 1
-            if settled || iteration % emitEvery == 0 {
+            let due = iteration % emitEvery == 0
+                && clock.now - lastEmit >= .milliseconds(80)
+            if settled || due {
+                lastEmit = clock.now
                 let frame = LayoutFrame3D(
                     positions: Dictionary(uniqueKeysWithValues: zip(ids, pos)),
                     settled: settled)
