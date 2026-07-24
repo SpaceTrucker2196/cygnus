@@ -1,16 +1,82 @@
 import SwiftUI
 import CygnusKit
 
+// The detail pane. Sidebar picks a repo; a segmented section picker
+// switches between the ops sections and the original Code Graph. The
+// four ops sections read the factory provider layer; only Code Graph
+// consumes the code-analysis state machine.
+
 struct RepoDetailView: View {
     @Environment(WorkspaceStore.self) private var store
 
     var body: some View {
+        Group {
+            if let repoID = store.selectedRepo {
+                section(for: repoID)
+                    .toolbar {
+                        ToolbarItem(placement: .principal) {
+                            Picker("Section", selection: sectionBinding(repoID)) {
+                                ForEach(RepoSection.allCases, id: \.self) { section in
+                                    Label(section.title, systemImage: section.systemImage).tag(section)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                    .task(id: repoID) { store.selectRepoSection(store.selectedSection, for: repoID) }
+            } else {
+                ContentUnavailableView(
+                    "No Repository Selected",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    description: Text("Add a repository to run it as a dark-factory ops dashboard."))
+            }
+        }
+    }
+
+    private func sectionBinding(_ id: UUID) -> Binding<RepoSection> {
+        Binding(get: { store.selectedSection },
+                set: { store.selectRepoSection($0, for: id) })
+    }
+
+    @ViewBuilder private func section(for id: UUID) -> some View {
+        switch store.selectedSection {
+        case .dashboard: DashboardView(repoID: id)
+        case .workflow: WorkflowView(repoID: id)
+        case .issues: IssuesView(repoID: id)
+        case .docs: DocsView(repoID: id)
+        case .codeGraph: CodeGraphContainerView()
+        }
+    }
+}
+
+// MARK: - Code Graph (the original analysis surface)
+
+struct CodeGraphContainerView: View {
+    @Environment(WorkspaceStore.self) private var store
+    @State private var inspectorShown = true
+
+    var body: some View {
+        content
+            .inspector(isPresented: $inspectorShown) {
+                EntityInspectorView()
+                    .inspectorColumnWidth(min: 260, ideal: 300)
+            }
+            .toolbar {
+                ToolbarItem {
+                    Button { inspectorShown.toggle() } label: {
+                        Label("Inspector", systemImage: "sidebar.trailing")
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder private var content: some View {
         switch store.currentState {
         case nil:
             ContentUnavailableView(
-                "No Repository Selected",
-                systemImage: "point.3.connected.trianglepath.dotted",
-                description: Text("Cygnus builds a knowledge graph from repository evidence."))
+                "Not Analyzed",
+                systemImage: "circle.dotted",
+                description: Text("This repository hasn't been analyzed into a knowledge graph yet."))
         case .idle:
             ContentUnavailableView {
                 Label("Not Analyzed", systemImage: "circle.dotted")
@@ -22,12 +88,8 @@ struct RepoDetailView: View {
             }
         case .analyzing(let phase, let progress, let partial):
             if let partial {
-                // Realtime: render the growing graph, progress rides
-                // on top.
                 ReadyContentView(snapshot: partial)
-                    .overlay(alignment: .bottom) {
-                        AnalyzingBadge(phase: phase, progress: progress)
-                    }
+                    .overlay(alignment: .bottom) { AnalyzingBadge(phase: phase, progress: progress) }
             } else {
                 AnalysisProgressView(phase: phase, progress: progress)
             }
@@ -37,9 +99,7 @@ struct RepoDetailView: View {
             } description: {
                 Text(message).font(.caption).lineLimit(4)
             } actions: {
-                Button("Retry") {
-                    if let id = store.selectedRepo { store.analyze(id) }
-                }
+                Button("Retry") { if let id = store.selectedRepo { store.analyze(id) } }
             }
         case .needsRelink:
             ContentUnavailableView {
@@ -47,8 +107,7 @@ struct RepoDetailView: View {
             } description: {
                 Text("The repository folder moved or was deleted. Locate it to continue.")
             } actions: {
-                Button("Locate Folder…") { relink() }
-                    .buttonStyle(.borderedProminent)
+                Button("Locate Folder…") { relink() }.buttonStyle(.borderedProminent)
             }
         case .ready(let snapshot):
             ReadyContentView(snapshot: snapshot)
@@ -86,7 +145,7 @@ struct ReadyContentView: View {
             }
         }
         .toolbar {
-            ToolbarItem(placement: .principal) {
+            ToolbarItem {
                 Picker("View", selection: $store.viewMode) {
                     ForEach(WorkspaceStore.ViewMode.allCases, id: \.self) { mode in
                         Text(mode.rawValue).tag(mode)
@@ -138,10 +197,8 @@ struct AnalyzingBadge: View {
                 ProgressView().controlSize(.small)
             }
             Text(phase.capitalized).font(.caption)
-            Button("Cancel") {
-                if let id = store.selectedRepo { store.cancel(id) }
-            }
-            .controlSize(.small)
+            Button("Cancel") { if let id = store.selectedRepo { store.cancel(id) } }
+                .controlSize(.small)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
@@ -158,15 +215,12 @@ struct AnalysisProgressView: View {
     var body: some View {
         VStack(spacing: 12) {
             if let progress {
-                ProgressView(value: progress) { Text(phase.capitalized) }
-                    .frame(maxWidth: 280)
+                ProgressView(value: progress) { Text(phase.capitalized) }.frame(maxWidth: 280)
             } else {
                 ProgressView { Text(phase.capitalized) }
             }
-            Button("Cancel") {
-                if let id = store.selectedRepo { store.cancel(id) }
-            }
-            .controlSize(.small)
+            Button("Cancel") { if let id = store.selectedRepo { store.cancel(id) } }
+                .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

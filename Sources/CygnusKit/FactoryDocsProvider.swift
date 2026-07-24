@@ -139,7 +139,7 @@ public enum FactoryDocScan {
         return false
     }
 
-    static func kind(forPath path: String) -> DocKind {
+    public static func kind(forPath path: String) -> DocKind {
         let name = (path as NSString).lastPathComponent.uppercased()
         if path.hasPrefix("docs/wiki/") { return .wiki }
         if path.hasPrefix("docs/views/") { return .views }
@@ -221,7 +221,7 @@ public struct FixtureDocsProvider: FactoryDocsProvider {
         return DocWriteResult(committed: commit != nil, commitSha: commit != nil ? "fixturesha" : nil)
     }
 
-    static func group(_ entries: [DocEntry]) -> [DocSection] {
+    public static func group(_ entries: [DocEntry]) -> [DocSection] {
         Dictionary(grouping: entries, by: \.kind)
             .map { DocSection(kind: $0.key, entries: $0.value.sorted { $0.name < $1.name }) }
             .sorted { $0.kind.sortRank < $1.kind.sortRank }
