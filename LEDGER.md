@@ -13,3 +13,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | c054889 | 2026-07-24T08:48:12Z | claude-opus-4-8 | 3116 | 82450 | 13917159 | 85931 | 9.8947 | Ops dashboard SwiftUI sections |
 | 78a1de7 | 2026-07-24T08:58:21Z | claude-opus-4-8 | 4871 | 55159 | 15221611 | 67181 | 9.6859 | Fix capability/load race; auto-select repo; verify end-to-end |
 | 9dac19e | 2026-07-24T20:37:19Z | claude-fable-5,claude-opus-4-8 | 75155 | 322565 | 48400132 | 1139948 | 73.5996 | 5 GB memory ceiling + bounded extraction; 2D graph grouping (area/layer/pattern) |
+| fd9264f | 2026-07-24T20:38:29Z | claude-fable-5 | 598 | 9376 | 1929260 | 6651 | 2.5371 | Pages preview as portrait letter-proportioned thumbnail |
