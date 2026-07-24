@@ -41,11 +41,18 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       Fruchterman–Reingold, progressive frames, zoom/pan/select;
       Outline|Graph picker). *Deferred: Barnes–Hut for >2k-node
       scenes.* *(2026-07-19)*
-- [x] **S5** — RealityKit 3D: instanced sphere nodes, single batched
-      edge mesh, arcball orbit/zoom, tap picking synced to inspector,
-      Outline|Flat|3D picker. *Deferred: 60 fps @ 2k-node perf gate
-      needs a manual GUI run; progressive 3D layout animation;
-      LowLevelMesh dynamic edges.* *(2026-07-19)*
+- [x] **S5** — RealityKit 3D: shipped 2026-07-19, then **removed
+      2026-07-24** — both 3D paths cost too much memory/time to
+      render (PROGRESS.md). The `GraphRendererView` seam stays; 3D
+      returns only behind it, gated by a real perf budget.
 - [~] **S6** — Polish. Done: needs-relink flow, Settings scene,
-      constellation app icon *(2026-07-19)*. Remaining: manual GUI
-      run + 60 fps gate (human), first tagged build.
+      constellation app icon *(2026-07-19)*; 5 GB memory governor +
+      engine hard abort + live meter; Flat-view spatial grouping
+      (area/layer/pattern regions) *(2026-07-24)*. Remaining: manual
+      GUI sweep (human), first tagged build.
+- [~] **S7** — Dark-factory ops dashboard *(landed unplanned,
+      2026-07-24)*: sections (Dashboard/Workflow/Issues/Docs),
+      capability detection, ledger/metrics/commits/runs cards,
+      fastlane screenshots + Pages previews, DF_Template installer.
+      Remaining scope is the owner's call — candidates: issue actions
+      from the app, converge triggering, multi-repo rollup view.
