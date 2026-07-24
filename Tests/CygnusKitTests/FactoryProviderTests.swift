@@ -161,6 +161,16 @@ import Foundation
         }
     }
 
+    @Test func rejectsFullOverwriteOfAppendOnlyMetrics() async throws {
+        let repo = tempRepo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try Data("| issue |".utf8).write(to: repo.appendingPathComponent("METRICS.md"))
+        let provider = FileDocsProvider(tooling: FixtureTooling())
+        await #expect(throws: DocsError.appendOnlyRequiresAppend("METRICS.md")) {
+            _ = try await provider.write(repoAt: repo, path: "METRICS.md", content: "rewritten", commit: nil)
+        }
+    }
+
     @Test func rejectsPathEscape() async throws {
         let repo = tempRepo()
         defer { try? FileManager.default.removeItem(at: repo) }

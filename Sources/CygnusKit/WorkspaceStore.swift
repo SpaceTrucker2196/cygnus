@@ -64,6 +64,9 @@ public final class WorkspaceStore {
         self.docs = docs
         self.repos = persistence.load()
         for repo in repos { states[repo.id] = .idle }
+        // An ops dashboard shouldn't open blank: land on the first
+        // registered repo.
+        selectedRepo = repos.first?.id
     }
 
     // MARK: - Registry
@@ -236,10 +239,8 @@ public final class WorkspaceStore {
     /// once a factory is detected, else Code Graph.
     public var selectedSection: RepoSection {
         get {
-            guard let id = selectedRepo else { return .codeGraph }
-            if let remembered = sectionByRepo[id] { return remembered }
-            return factoryStates[id]?.caps.hasDocs == true
-                || factoryStates[id]?.caps.github == true ? .dashboard : .codeGraph
+            guard let id = selectedRepo else { return .dashboard }
+            return sectionByRepo[id] ?? .dashboard
         }
         set { if let id = selectedRepo { sectionByRepo[id] = newValue } }
     }

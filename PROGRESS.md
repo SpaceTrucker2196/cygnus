@@ -76,6 +76,42 @@
   tagged build. E6 remaining: derived-layer rollups, fuzzy renames,
   IndexStoreDB spike.
 
+## 2026-07-24 — Dark-factory ops dashboard
+
+- Repurposed cygnus into a general **dark-factory ops dashboard** (works
+  on any repo; sloth is the first example). Verified end-to-end in the
+  real GUI against `~/projects/sloth`: Dashboard shows 4 open / 31 closed
+  issues (2 production-orders), latest CI "Passed", converge metrics,
+  $4,834.99 token spend with sparkline, and recent ships with `closes #N`
+  links — all from live `git`/`gh` + local files.
+- **Sandbox dropped** (App/Cygnus.entitlements + project.yml): the app
+  now shells out to the user's authenticated `git`/`gh`. Forfeits App
+  Store distribution — fine for an internal ops tool.
+- **CygnusKit additions**: FactoryTooling/ToolLocator/ProcessTooling
+  (absolute-path resolution — a GUI app's PATH omits /opt/homebrew/bin;
+  concurrent pipe drain; timeout; prompts disabled). FactoryModel value
+  types + DocParsers/MarkdownDocument/WikiLink (pure). FactoryProvider/
+  GitHubFactoryProvider + FactoryDocsProvider/FileDocsProvider (atomic
+  write, policy guards: LEDGER read-only, METRICS append-only, no new
+  root files, no path escape; optional named `git add` + commit, no
+  push). WorkspaceStore gains per-repo FactoryState/Loadable + on-demand
+  loaders mirroring analyze/apply/tasks.
+- **Views**: RepoDetailView is now a section dispatcher (Dashboard /
+  Workflow / Issues / Docs / Code Graph); the original graph moved to
+  CodeGraphContainerView. Workflow diagrams are native SwiftUI (converge
+  stage diagram + CI list), not the force-directed Canvas. Docs editor
+  has edit/preview/split, three-state checklist round-trip, atomic save,
+  optional commit. Markdown rendered on built-in AttributedString (no new
+  dep). Auto-select first repo on launch (dashboard, not blank).
+- **Post-sandbox resolution**: pathHint is now authoritative, bookmark a
+  fallback for moved folders — also cut a pre-existing relaunch-test
+  flake (~50% → ~12%). The residual RepoLoadingTests flake is a GRDB
+  shared-directory race under parallel contention (passes in isolation),
+  tracked alongside the known UI-test AX-tree issue.
+- Tests: 64 CygnusKit + 30 CygnusCore + app unit tests green; a gated
+  `EndToEndSlothTests` exercises the real stack against live sloth
+  (`CYGNUS_E2E_SLOTH=1 swift test --filter EndToEndSlothTests`).
+
 ## 2026-07-24
 
 - Removed 3D rendering. Both 3D paths (the parked RealityKit
