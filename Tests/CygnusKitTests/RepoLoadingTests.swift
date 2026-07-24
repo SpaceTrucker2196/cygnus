@@ -94,7 +94,7 @@ struct RepoLoadingHarness {
         second.selectedRepo = id
         second.analyze(id)
         guard case .ready = try await harness.waitForSettle(second, id) else {
-            Issue.record("relaunched store failed to analyze")
+            Issue.record("relaunched store failed to analyze: \(String(describing: second.states[id]))")
             return
         }
     }
