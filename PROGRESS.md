@@ -157,8 +157,26 @@
   Pages URL via `gh api …/pages`, `owner.github.io` fallback.
 - Tests: 77 CygnusKit + 30 CygnusCore + app unit green. UI test
   runner still blocked by the automation-mode timeout (environment,
-  pre-existing). `Package.resolved` (root) remains untracked pending
-  owner call.
+  pre-existing).
+- **Root cause of the OOM crashes found and fixed** (the throttles
+  above were necessary armor but not the disease): containment/
+  declares edges form a DAG — the same declaration key is declared
+  from several files (split originals + combined/generated copies,
+  extensions) — and `SnapshotIndex.build` rebuilt every shared
+  subtree once per path: exponential materialization, sampled live at
+  25 GB and climbing, never returning. On the main actor that was
+  also the launch-day beach ball. Fix: memoized build + cycle cut +
+  duplicate-edge collapse. MeowPassword full-pipeline: stuck-forever
+  → ready in 3.4 s / 65 MB peak; live multi-repo re-analysis peaks
+  486 MB. En route: engine hard abort (4.5 GB, walk + extract),
+  store cancels running analysis at the cap, walk excludes `build//
+  SourcePackages/`, detached coalescing event pump (a plain Task in
+  a @MainActor type inherits the main actor — the event loop was on
+  the UI thread), and **no task spawning during App.init** (window
+  suppression, again). Gated stress test:
+  `CYGNUS_STRESS_REPO=<path> swift test --filter MemoryStressTests`.
+  Debug lesson: `sample <pid>` on the runaway named the exact frame;
+  theory kept pointing at the wrong layer.
 
 ## 2026-07-20
 
