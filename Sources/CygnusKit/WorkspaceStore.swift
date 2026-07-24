@@ -186,6 +186,18 @@ public final class WorkspaceStore {
     }
 
     private func apply(_ event: AnalysisEvent, to id: UUID) {
+        // The hard cap must stop work that's already running, not just
+        // refuse new work — analysis events stream constantly, so this
+        // is a reliable choke point. The engine has its own in-process
+        // abort; this is the app-side backstop that also frees the
+        // retained partial state.
+        memory.refresh()
+        if memory.isCritical, case .analyzing = states[id] {
+            cancel(id)
+            states[id] = .failed(
+                "Stopped: memory reached the \(memory.summary) limit during analysis. Free memory or exclude large directories, then retry.")
+            return
+        }
         var current: (phase: String, progress: Double?, partial: GraphSnapshot?) {
             if case .analyzing(let phase, let progress, let partial) = states[id] {
                 (phase, progress, partial)

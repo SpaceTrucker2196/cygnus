@@ -165,6 +165,10 @@ public actor CygnusWorkspace {
                 inFlight -= 1
                 extracted.append(result)
                 completed += 1
+                // Results accumulate for the whole run — the hard
+                // limit is the only bound on that growth. Throwing
+                // here cancels the group; nothing has been committed.
+                try limits.checkHardLimit()
                 progress?(IndexProgress(
                     phase: "extract", completed: completed, total: total,
                     extracted: ExtractedFile(file: result.0, language: result.1,
@@ -175,6 +179,9 @@ public actor CygnusWorkspace {
             }
         }
 
+        // Resolve makes further full copies (fileObservations, the
+        // assertion set) — don't start it without headroom.
+        try limits.checkHardLimit()
         progress?(IndexProgress(phase: "resolve", completed: 0, total: 1))
 
         // Persist observations, keeping ids for provenance.
@@ -253,4 +260,19 @@ public actor CygnusWorkspace {
 
 public enum WorkspaceError: Error, Equatable {
     case unknownRepository(RepositoryID)
+    /// The index run was aborted because the process crossed the hard
+    /// memory limit. Nothing was committed; re-run after freeing
+    /// memory (or raise CYGNUS_HARD_MEMORY_MB deliberately).
+    case memoryLimitExceeded(usedBytes: UInt64, limitBytes: UInt64)
+}
+
+extension WorkspaceError: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .unknownRepository(let id):
+            "unknown repository \(id.raw)"
+        case .memoryLimitExceeded(let used, let limit):
+            "index aborted: memory \(used / 1_048_576) MB exceeded the \(limit / 1_048_576) MB hard limit; nothing was committed"
+        }
+    }
 }
