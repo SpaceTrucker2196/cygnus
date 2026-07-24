@@ -9,3 +9,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | bbebc3f | 2026-07-24T08:20:40Z | claude-opus-4-8 | 12216 | 172718 | 15940090 | 453075 | 16.8798 | Ops dashboard foundation: drop sandbox + git/gh subprocess tooling |
 | 82c0d42 | 2026-07-24T08:26:49Z | claude-opus-4-8 | 1904 | 74671 | 9556452 | 81398 | 7.4685 | Factory value types + pure parsers |
 | c9a8321 | 2026-07-24T08:31:14Z | claude-opus-4-8 | 648 | 52593 | 5201828 | 45988 | 4.3789 | Factory + docs providers over git/gh |
+| a11233b | 2026-07-24T08:40:53Z | claude-opus-4-8 | 5191 | 93668 | 15016344 | 88100 | 10.7568 | Wire factory state into WorkspaceStore |
