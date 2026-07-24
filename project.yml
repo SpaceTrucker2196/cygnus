@@ -34,12 +34,15 @@ targets:
         excludes:
           - "Tests/**"
           - "UITests/**"
+    # Not sandboxed: the ops dashboard shells out to the user's `git`
+    # and `gh` CLIs and reads/writes repo files directly. App-sandbox
+    # would block subprocess spawning and arbitrary file access. This
+    # forecloses App Store distribution — acceptable for an internal
+    # developer-ops tool.
     entitlements:
       path: App/Cygnus.entitlements
       properties:
-        com.apple.security.app-sandbox: true
-        com.apple.security.files.user-selected.read-only: true
-        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.app-sandbox: false
     info:
       path: App/Info.plist
       properties:
