@@ -38,7 +38,13 @@ public struct LocalFSProvider: Sendable {
     }
 
     /// Walk the tree, ingest contents, return the manifest.
-    public func snapshot() throws -> SnapshotManifest {
+    ///
+    /// `budget` is checked once per captured file; throwing from it
+    /// aborts the walk. The caller owns the policy (the engine passes
+    /// its hard memory limit) — a 5 GB working tree is ingested here,
+    /// and a walk that can't be stopped is a walk that can OOM the
+    /// machine before extraction even starts.
+    public func snapshot(budget: (@Sendable () throws -> Void)? = nil) throws -> SnapshotManifest {
         let fm = FileManager.default
         var files: [SnapshotFile] = []
 
@@ -72,8 +78,13 @@ public struct LocalFSProvider: Sendable {
                                           size: size, languageHint: nil))
                 continue
             }
-            let data = try Data(contentsOf: url)
-            let blob = try contentStore.store(data)
+            try budget?()
+            // Autorelease per file: Data(contentsOf:) on a large tree
+            // otherwise accumulates transient buffers for the whole
+            // walk before anything is released.
+            let blob = try autoreleasepool {
+                try contentStore.store(Data(contentsOf: url))
+            }
             files.append(SnapshotFile(path: path, blob: blob, size: size,
                                       languageHint: Self.languageHint(forPath: path)))
         }
