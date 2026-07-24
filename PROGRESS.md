@@ -125,6 +125,41 @@
   clean build. (UI test still blocked by this session's empty-AX-tree
   degradation — unrelated.)
 
+## 2026-07-24 — memory ceiling, graph grouping, factory installer
+
+- 5 GB hard memory ceiling after an OOM machine crash. Root causes:
+  unbounded per-file extraction task group (N cores × full syntax
+  trees) and the partial-snapshot builder retaining a second copy of
+  all observations. Now: `IndexLimits` sliding window (≤ min(cores,6)
+  concurrent parses, serializes past a 3.5 GB soft brake),
+  `MemoryGovernor` (phys_footprint sampling; analyze refuses at cap,
+  previews shed at 85%, sidebar meter), preview builder freezes past
+  4k files. Throttle-and-shed by design — no setrlimit (fights
+  RealityKit/Metal mappings). Verified: sloth full index 41 MB peak
+  (CLI) / 287 MB (app), 137 MB settled. Env knobs:
+  `CYGNUS_MEMORY_LIMIT_MB`, `CYGNUS_SOFT_MEMORY_MB`,
+  `CYGNUS_MAX_EXTRACT_CONCURRENCY`.
+- Flat view spatial grouping (`docs/views/flat-graph.md`): Area /
+  Layer (Production–Tests–Modules) / Pattern (MVVM-MVC naming roles;
+  convention reading, not inference — real detection is derived-layer
+  work) / None. Deterministic ring anchors per cluster name keep
+  spatial memory across re-analyses; padded convex-hull tinted
+  regions; tests pinned gray, modules purple.
+- `~/projects/DF_Template` created (own repo): bare dark-factory
+  skeleton from the sloth survey, FIRST_RUN.md adaptation drill for
+  insert-into-existing and fresh modes; uses the canonical 9-column
+  ledger header ledger.py actually emits. App gained
+  `FactoryInstaller` + Install Factory button (additive, never
+  overwrites, reinstall no-op) shown when a repo lacks LEDGER.md.
+- Dashboard previews: fastlane screenshot strip (ImageIO-downsampled
+  thumbnails, capped 24) and Pages site as a 300-pt portrait
+  letter-proportion thumbnail (renders at 800-pt viewport, scaled).
+  Pages URL via `gh api …/pages`, `owner.github.io` fallback.
+- Tests: 77 CygnusKit + 30 CygnusCore + app unit green. UI test
+  runner still blocked by the automation-mode timeout (environment,
+  pre-existing). `Package.resolved` (root) remains untracked pending
+  owner call.
+
 ## 2026-07-20
 
 - First real GUI run (Jeff): analysis + Flat view worked on an 846-
