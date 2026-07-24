@@ -18,3 +18,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | a2f85ef | 2026-07-24T20:53:25Z | claude-fable-5 | 1228 | 45850 | 12105016 | 43810 | 15.2860 | Hard memory abort in engine, store-side cancel, exclude build/SourcePackages (43 |
 | 9abc486 | 2026-07-24T21:00:45Z | claude-fable-5 | 1943 | 32479 | 9565130 | 35404 | 11.9166 | Detached analysis pump (UI beachball fix); walk-phase memory budget + autoreleas |
 | ba50ff3 | 2026-07-24T21:04:42Z | claude-fable-5 | 679 | 16559 | 4992483 | 18697 | 6.2012 | Fix windowless launch (sampler task moved out of App-init path) |
+| 43f00b4 | 2026-07-24T21:36:10Z | claude-fable-5 | 2029 | 65190 | 20604174 | 66066 | 25.2053 | Root-cause fix: SnapshotIndex exponential DAG materialization (25 GB runaway); m |
