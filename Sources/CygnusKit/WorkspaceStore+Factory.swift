@@ -31,20 +31,25 @@ extension WorkspaceStore {
     }
 
     /// Load only the datasets a section needs, and only if idle.
+    /// GitHub-gated datasets (issues, runs) wait until capabilities are
+    /// known — otherwise they'd fail with a spurious "GitHub
+    /// unavailable" before detection finishes. `refreshCapabilities`
+    /// calls this again on completion to pick them up.
     public func ensureLoaded(_ section: RepoSection, for id: UUID) {
         let state = factoryState(for: id)
+        let capsKnown = state.capabilities.value != nil
         switch section {
         case .dashboard:
-            if state.runs.isIdle { refreshRuns(id) }
+            if state.runs.isIdle && capsKnown { refreshRuns(id) }
             if state.commits.isIdle { refreshCommits(id) }
             if state.metrics.isIdle { refreshMetrics(id) }
             if state.ledger.isIdle { refreshLedger(id) }
-            if state.issues.isIdle { refreshIssues(id) }
+            if state.issues.isIdle && capsKnown { refreshIssues(id) }
         case .workflow:
-            if state.runs.isIdle { refreshRuns(id) }
+            if state.runs.isIdle && capsKnown { refreshRuns(id) }
             if state.converge.isIdle { refreshConverge(id) }
         case .issues:
-            if state.issues.isIdle { refreshIssues(id) }
+            if state.issues.isIdle && capsKnown { refreshIssues(id) }
         case .docs:
             if state.docs.isIdle { refreshDocs(id) }
         case .codeGraph:
@@ -98,7 +103,11 @@ extension WorkspaceStore {
         let provider = factory
         spawn(id, .capabilities) { [weak self] in
             let caps = await provider.detectCapabilities(repoAt: url)
-            self?.mutateFactory(id) { $0.capabilities = .loaded(caps) }
+            guard let self else { return }
+            self.mutateFactory(id) { $0.capabilities = .loaded(caps) }
+            // Capabilities are known now — fire the GitHub-gated
+            // datasets the current section was waiting on.
+            self.ensureLoaded(self.sectionByRepo[id] ?? .dashboard, for: id)
         }
     }
 
