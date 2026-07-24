@@ -50,12 +50,58 @@ public struct GitHubFactoryProvider: FactoryProvider {
         caps.hasLedger = exists("LEDGER.md")
         caps.hasWorkflows = directoryHasYAML(url.appendingPathComponent(".github/workflows"))
         caps.hasDocs = FactoryDocScan.hasAnyDoc(repoAt: url)
+        caps.screenshots = Self.fastlaneScreenshots(repoAt: url)
+        caps.pagesURL = await detectPagesURL(repoAt: url, caps: caps)
         return caps
     }
 
     private func directoryHasYAML(_ dir: URL) -> Bool {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
         return entries.contains { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }
+    }
+
+    /// Fastlane screenshot scan: everything image-like under
+    /// `fastlane/` (snapshot puts them in `screenshots/<locale>/`,
+    /// deliver under `metadata/`). Sorted for stable order, capped —
+    /// the dashboard shows a preview strip, not a gallery.
+    static let screenshotCap = 24
+    static func fastlaneScreenshots(repoAt url: URL) -> [String] {
+        let root = url.appendingPathComponent("fastlane")
+        guard let enumerator = FileManager.default.enumerator(
+            at: root, includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles])
+        else { return [] }
+        var found: [String] = []
+        for case let file as URL in enumerator {
+            guard ["png", "jpg", "jpeg"].contains(file.pathExtension.lowercased())
+            else { continue }
+            let rootPath = url.standardizedFileURL.path
+            let path = file.standardizedFileURL.path
+            guard path.hasPrefix(rootPath) else { continue }
+            found.append(String(path.dropFirst(rootPath.count).drop(while: { $0 == "/" })))
+        }
+        return Array(found.sorted().prefix(screenshotCap))
+    }
+
+    /// Pages URL: authoritative from `gh api .../pages` when GitHub is
+    /// reachable; falls back to the `owner.github.io/name` convention
+    /// when a pages deploy workflow exists.
+    private func detectPagesURL(repoAt url: URL, caps: FactoryCapabilities) async -> String? {
+        guard let remote = caps.remote else { return nil }
+        if caps.github,
+           let result = try? await tooling.run(
+               .gh, ["api", "repos/\(remote.slug)/pages", "--jq", ".html_url"],
+               workingDirectory: url, timeout: timeout),
+           result.succeeded {
+            let html = result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !html.isEmpty { return html }
+        }
+        let workflows = url.appendingPathComponent(".github/workflows")
+        if let entries = try? FileManager.default.contentsOfDirectory(atPath: workflows.path),
+           entries.contains(where: { $0.lowercased().contains("pages") }) {
+            return "https://\(remote.owner).github.io/\(remote.name)/"
+        }
+        return nil
     }
 
     // MARK: - GitHub (gh)
