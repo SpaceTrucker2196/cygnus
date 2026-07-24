@@ -28,14 +28,17 @@ struct RepoSidebarView: View {
             }
         }
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Button {
-                    addRepository()
-                } label: {
-                    Label("Add Repository", systemImage: "plus")
+            VStack(spacing: 6) {
+                MemoryMeterView(governor: store.memory)
+                HStack {
+                    Button {
+                        addRepository()
+                    } label: {
+                        Label("Add Repository", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderless)
+                    Spacer()
                 }
-                .buttonStyle(.borderless)
-                Spacer()
             }
             .padding(8)
         }
@@ -54,6 +57,36 @@ struct RepoSidebarView: View {
 
     private func reveal(_ repo: RegisteredRepo) {
         NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: repo.pathHint)
+    }
+}
+
+/// Live process-memory meter against the hard cap. Turns amber as the
+/// governor starts shedding the live preview, red at the ceiling.
+struct MemoryMeterView: View {
+    let governor: MemoryGovernor
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Image(systemName: "memorychip")
+                    .font(.caption2)
+                Text(governor.summary)
+                    .font(.caption2)
+                    .monospacedDigit()
+                Spacer()
+            }
+            .foregroundStyle(tint)
+            ProgressView(value: governor.fraction)
+                .progressViewStyle(.linear)
+                .tint(tint)
+        }
+        .help("Memory usage against the \(governor.summary.split(separator: "/").last ?? "") hard limit")
+    }
+
+    private var tint: Color {
+        if governor.isCritical { return .red }
+        if governor.isHigh { return .orange }
+        return .secondary
     }
 }
 

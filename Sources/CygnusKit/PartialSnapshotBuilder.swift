@@ -22,6 +22,13 @@ final class PartialSnapshotBuilder: @unchecked Sendable {
     /// matter how fast extraction runs.
     private static let interval = Duration.milliseconds(800)
 
+    /// The live preview retains a copy of every file's observations so
+    /// it can re-resolve the growing graph — a second full copy beside
+    /// the engine's. Past this many files that copy costs more than the
+    /// preview is worth, so we freeze it: the final snapshot is
+    /// projected from the committed store regardless.
+    private static let previewFileCap = 4000
+
     init(repository: RepositoryID, displayName: String) {
         self.repository = repository
         self.displayName = displayName
@@ -39,6 +46,10 @@ final class PartialSnapshotBuilder: @unchecked Sendable {
     func add(_ extracted: ExtractedFile) -> GraphSnapshot? {
         lock.lock()
         defer { lock.unlock() }
+        // Freeze the preview once it's grown large enough that a second
+        // copy of the observations would compete with the engine for
+        // memory. No append, no re-resolve, no new snapshot allocation.
+        guard files.count < Self.previewFileCap else { return nil }
         files.append(FileObservations(
             file: extracted.file, language: extracted.language,
             observations: extracted.observations.map { (ObservationID(0), $0) }))

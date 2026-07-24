@@ -47,6 +47,10 @@ public final class WorkspaceStore {
     /// Per-repo factory data, loaded on demand.
     public private(set) var factoryStates: [UUID: FactoryState] = [:]
 
+    /// Hard 5 GB memory ceiling. Views read it for the usage meter;
+    /// analysis honours it.
+    public let memory: MemoryGovernor
+
     private let engine: any GraphEngine
     private let persistence: WorkspacePersistence
     let factory: any FactoryProvider
@@ -57,16 +61,19 @@ public final class WorkspaceStore {
     public init(engine: any GraphEngine = WorkspaceGraphEngine(),
                 persistence: WorkspacePersistence = WorkspacePersistence(),
                 factory: any FactoryProvider = GitHubFactoryProvider(),
-                docs: any FactoryDocsProvider = FileDocsProvider()) {
+                docs: any FactoryDocsProvider = FileDocsProvider(),
+                memory: MemoryGovernor = MemoryGovernor()) {
         self.engine = engine
         self.persistence = persistence
         self.factory = factory
         self.docs = docs
+        self.memory = memory
         self.repos = persistence.load()
         for repo in repos { states[repo.id] = .idle }
         // An ops dashboard shouldn't open blank: land on the first
         // registered repo.
         selectedRepo = repos.first?.id
+        memory.startSampling()
     }
 
     // MARK: - Registry
@@ -124,6 +131,15 @@ public final class WorkspaceStore {
 
     public func analyze(_ id: UUID) {
         guard let repo = repos.first(where: { $0.id == id }) else { return }
+        // Refuse to start new analysis while already at the hard cap —
+        // starting another index is exactly how the process would tip
+        // over. Sample fresh so the gate isn't decided on a stale read.
+        memory.refresh()
+        if memory.isCritical {
+            states[id] = .failed(
+                "Paused: memory is at the \(memory.summary) limit. Close a repository or free memory, then retry.")
+            return
+        }
         cancel(id)
         states[id] = .analyzing(phase: "starting", progress: nil)
 
@@ -185,6 +201,14 @@ public final class WorkspaceStore {
             states[id] = .analyzing(phase: current.phase, progress: value,
                                     partial: current.partial)
         case .partial(let snapshot):
+            // The live preview is a courtesy. Under memory pressure,
+            // drop it: don't retain the snapshot or rebuild its index,
+            // so headroom goes to the committed result, not the render.
+            if memory.isHigh {
+                states[id] = .analyzing(phase: current.phase, progress: current.progress,
+                                        partial: nil)
+                break
+            }
             // Index rebuilds are O(n) per partial; above this size the
             // outline waits for the final snapshot.
             if snapshot.nodes.count <= 5000 {

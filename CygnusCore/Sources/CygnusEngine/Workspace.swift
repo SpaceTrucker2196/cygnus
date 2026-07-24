@@ -89,6 +89,7 @@ public actor CygnusWorkspace {
     /// changes since the previous snapshot. First run indexes
     /// everything; later runs are incremental via manifest diff.
     public func index(_ repoID: RepositoryID,
+                      limits: IndexLimits = .default,
                       progress: (@Sendable (IndexProgress) -> Void)? = nil) async throws -> IndexResult {
         guard let repo = try store.repositories().first(where: { $0.id == repoID }),
               let rootPath = repo.rootPath
@@ -136,22 +137,41 @@ public actor CygnusWorkspace {
         let total = workList.count
         var extracted: [(SnapshotFile, String, [Observation])] = []
         var completed = 0
+        // Bounded, memory-aware sliding window: at most `limits.window()`
+        // files parse at once (that count of syntax trees is the peak),
+        // and the window shrinks to one whenever the process footprint
+        // crosses the soft brake — so a huge repo can't fan out into
+        // hundreds of concurrent trees and exhaust memory.
         try await withThrowingTaskGroup(of: (SnapshotFile, String, [Observation]).self) { group in
-            for (file, extractor) in workList {
-                let contentStore = self.contentStore
+            let contentStore = self.contentStore
+            var iterator = workList.makeIterator()
+            var inFlight = 0
+
+            func submitNext() -> Bool {
+                guard let (file, extractor) = iterator.next() else { return false }
                 group.addTask {
                     let content = try contentStore.read(file.blob)
                     let observations = try extractor.extract(file: file, content: content)
                     return (file, file.languageHint ?? "unknown", observations)
                 }
+                inFlight += 1
+                return true
             }
-            for try await result in group {
+
+            // Seed the window.
+            while inFlight < limits.window(), submitNext() {}
+
+            while let result = try await group.next() {
+                inFlight -= 1
                 extracted.append(result)
                 completed += 1
                 progress?(IndexProgress(
                     phase: "extract", completed: completed, total: total,
                     extracted: ExtractedFile(file: result.0, language: result.1,
                                              observations: result.2)))
+                // Top the window back up to its current (possibly
+                // pressure-reduced) width before awaiting the next.
+                while inFlight < limits.window(), submitNext() {}
             }
         }
 
