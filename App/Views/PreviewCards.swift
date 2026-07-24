@@ -75,34 +75,59 @@ private struct ScreenshotThumbnail: View {
     }
 }
 
-/// Small live preview of the repo's GitHub Pages site, with a button
-/// to open it properly. The web view is display-only — interaction
-/// belongs in the browser.
+/// Preview of the repo's GitHub Pages site as a portrait page
+/// thumbnail (letter proportions — it reads as a document, not a
+/// letterboxed strip), with a button to open it properly. The web
+/// view is display-only — interaction belongs in the browser.
 struct PagesPreviewCard: View {
     let pagesURL: String
 
     var body: some View {
         OpsCard(title: "Pages Site", systemImage: "globe") {
-            VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
                 if let url = URL(string: pagesURL) {
-                    PagesWebPreview(url: url)
-                        .frame(height: 190)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-                        // Display-only: swallow scrolls/clicks.
-                        .overlay { Color.clear.contentShape(Rectangle()) }
+                    PageThumbnail(url: url)
                 }
-                HStack {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(pagesURL).font(.caption).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                    Spacer()
+                        .lineLimit(2).truncationMode(.middle)
                     Button("Open") {
                         if let url = URL(string: pagesURL) { NSWorkspace.shared.open(url) }
                     }
                     .controlSize(.small)
                 }
+                Spacer()
             }
         }
+    }
+}
+
+/// A site rendered at a real desktop viewport, scaled down into a
+/// portrait letter-proportioned thumbnail — the page lays out as a
+/// page, then shrinks, instead of reflowing into a 160-pt viewport.
+private struct PageThumbnail: View {
+    let url: URL
+
+    /// Layout viewport the site renders at.
+    private static let renderWidth: CGFloat = 800
+    /// Letter portrait: height = width × 11 / 8.5.
+    private static let renderHeight: CGFloat = renderWidth * 11 / 8.5
+    /// On-screen thumbnail width.
+    private static let thumbWidth: CGFloat = 150
+    private static let scale = thumbWidth / renderWidth
+
+    var body: some View {
+        PagesWebPreview(url: url)
+            .frame(width: Self.renderWidth, height: Self.renderHeight)
+            .scaleEffect(Self.scale, anchor: .topLeading)
+            .frame(width: Self.thumbWidth,
+                   height: Self.renderHeight * Self.scale,
+                   alignment: .topLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+            // Display-only: swallow scrolls/clicks.
+            .overlay { Color.clear.contentShape(Rectangle()) }
+            .onTapGesture { NSWorkspace.shared.open(url) }
     }
 }
 
@@ -111,7 +136,6 @@ private struct PagesWebPreview: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let view = WKWebView()
-        view.pageZoom = 0.5
         view.load(URLRequest(url: url))
         return view
     }
