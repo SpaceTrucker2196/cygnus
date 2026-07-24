@@ -8,7 +8,7 @@ import Foundation
 extension WorkspaceStore {
 
     /// Resolve a repo's folder URL (pathHint first, bookmark fallback).
-    func repoURL(_ id: UUID) -> URL? {
+    public func repoURL(_ id: UUID) -> URL? {
         guard let repo = repos.first(where: { $0.id == id }) else { return nil }
         return resolveReadableURL(repo) ?? URL(fileURLWithPath: repo.pathHint)
     }
@@ -236,6 +236,27 @@ extension WorkspaceStore {
                 self?.mutateFactory(id) { $0.docs = .failed(WorkspaceStore.describe(error)) }
             }
         }
+    }
+
+    // MARK: - Factory installation
+
+    /// Copy the DF_Template skeleton into the repo (additive — never
+    /// overwrites), then re-detect capabilities so the dashboard
+    /// lights up. Returns what was written, or throws for the view
+    /// to surface.
+    @discardableResult
+    public func installFactory(
+        _ id: UUID,
+        installer: FactoryInstaller = FactoryInstaller()) async throws -> FactoryInstaller.Result {
+        guard let url = repoURL(id) else {
+            throw FactoryInstaller.InstallerError.templateMissing("repository folder")
+        }
+        let result = try await RepoAccess.withAccess(to: url) { url in
+            try installer.install(into: url)
+        }
+        refreshCapabilities(id)
+        refreshDocs(id)
+        return result
     }
 
     // MARK: - Issue detail + Docs editing
