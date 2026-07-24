@@ -23,8 +23,11 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       *Deferred to E6: FSEvents watch, `cygnus verify`, diff-between-
       revisions query, derived-layer rollups.* *(2026-07-19)*
 - [~] **E6** — Hardening. Done: FSEvents watch, `cygnus verify`,
-      revision diff query, no-op-revision suppression *(2026-07-19)*.
-      Remaining: derived rollups, fuzzy renames, IndexStoreDB spike.
+      revision diff query, no-op-revision suppression *(2026-07-19)*;
+      derived import rollups (`ImportRollupDeriver`: per-directory
+      `core:dependsOn` module aggregates with counts + observation
+      provenance, run as its own revision inside `index`)
+      *(2026-07-24)*. Remaining: fuzzy renames, IndexStoreDB spike.
 
 ## Shell
 

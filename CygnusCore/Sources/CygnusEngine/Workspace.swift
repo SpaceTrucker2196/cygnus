@@ -3,6 +3,7 @@ import CygnusGraph
 import CygnusStore
 import CygnusProviders
 import CygnusObservation
+import CygnusDerive
 import CygnusExtractorSwift
 import CygnusExtractorTS
 
@@ -252,8 +253,20 @@ public actor CygnusWorkspace {
             note: "index \(repo.displayName): +\(diff.added.count) ~\(diff.modified.count) -\(diff.removed.count)",
             snapshot: snapshot)
 
+        // Derive pass: bring the derived layer up to date from the
+        // just-committed observed facts. Its own revision (one
+        // transaction), skipped entirely when nothing changed. The
+        // result reports the final revision — the one the graph is at.
+        progress?(IndexProgress(phase: "derive", completed: 0, total: 1))
+        let derived = try ImportRollupDeriver().derive(from: store, repository: repoID)
+        var finalRevision = revision
+        if !derived.relationships.isEmpty || !derived.retractRelationships.isEmpty {
+            finalRevision = try store.commit(
+                derived, note: "derive \(repo.displayName): import rollups")
+        }
+
         return IndexResult(
-            repository: repoID, revision: revision, snapshot: snapshot,
+            repository: repoID, revision: finalRevision, snapshot: snapshot,
             filesAnalyzed: manifest.files.count,
             filesChanged: diff.changedOrAdded.count + diff.removed.count,
             entityCount: changes.entities.count,
