@@ -38,14 +38,30 @@ public final class WorkspaceStore {
     /// modules are never charted.
     public var showExternalModules = false
 
+    // MARK: Ops-dashboard state
+    /// Which section the detail pane shows, remembered per repo.
+    public var sectionByRepo: [UUID: RepoSection] = [:]
+    /// Selection within the Issues and Docs sections.
+    public var selectedOrder: Int?
+    public var selectedDoc: String?
+    /// Per-repo factory data, loaded on demand.
+    public private(set) var factoryStates: [UUID: FactoryState] = [:]
+
     private let engine: any GraphEngine
     private let persistence: WorkspacePersistence
+    let factory: any FactoryProvider
+    let docs: any FactoryDocsProvider
     private var tasks: [UUID: Task<Void, Never>] = [:]
+    var factoryTasks: [FactoryTaskKey: Task<Void, Never>] = [:]
 
     public init(engine: any GraphEngine = WorkspaceGraphEngine(),
-                persistence: WorkspacePersistence = WorkspacePersistence()) {
+                persistence: WorkspacePersistence = WorkspacePersistence(),
+                factory: any FactoryProvider = GitHubFactoryProvider(),
+                docs: any FactoryDocsProvider = FileDocsProvider()) {
         self.engine = engine
         self.persistence = persistence
+        self.factory = factory
+        self.docs = docs
         self.repos = persistence.load()
         for repo in repos { states[repo.id] = .idle }
     }
@@ -112,16 +128,10 @@ public final class WorkspaceStore {
         tasks[id] = Task { [weak self] in
             guard let self else { return }
             do {
-                // Prefer the bookmark; fall back to the raw path when
-                // the folder is still directly readable (bookmark
-                // failed to create, or non-sandboxed contexts).
-                let resolved = (try? RepoAccess.resolve(repo.bookmark))?.url
-                    ?? URL(fileURLWithPath: repo.pathHint)
-                guard FileManager.default.isReadableFile(atPath: resolved.path) else {
+                guard let url = self.resolveReadableURL(repo) else {
                     self.states[id] = .needsRelink
                     return
                 }
-                let url = resolved
                 try await RepoAccess.withAccess(to: url) { url in
                     for try await event in engine.analyze(repoAt: url) {
                         await self.apply(event, to: id)
@@ -139,6 +149,21 @@ public final class WorkspaceStore {
     public func cancel(_ id: UUID) {
         tasks[id]?.cancel()
         tasks[id] = nil
+    }
+
+    /// Resolve a repo's folder to a readable URL. Post-sandbox the raw
+    /// `pathHint` is authoritative and deterministic; the security-
+    /// scoped bookmark is only a fallback for a folder that has moved
+    /// out from under its path. Returns nil when neither is readable
+    /// (→ needsRelink).
+    func resolveReadableURL(_ repo: RegisteredRepo) -> URL? {
+        let byPath = URL(fileURLWithPath: repo.pathHint)
+        if FileManager.default.isReadableFile(atPath: byPath.path) { return byPath }
+        if let viaBookmark = (try? RepoAccess.resolve(repo.bookmark))?.url,
+           FileManager.default.isReadableFile(atPath: viaBookmark.path) {
+            return viaBookmark
+        }
+        return nil
     }
 
     private func apply(_ event: AnalysisEvent, to id: UUID) {
@@ -203,5 +228,49 @@ public final class WorkspaceStore {
     public var selectedNodeValue: GraphSnapshot.Node? {
         guard let id = selectedNode else { return nil }
         return currentIndex?.byID[id]
+    }
+
+    // MARK: - Ops selection helpers
+
+    /// The section shown for the selected repo. Defaults to Dashboard
+    /// once a factory is detected, else Code Graph.
+    public var selectedSection: RepoSection {
+        get {
+            guard let id = selectedRepo else { return .codeGraph }
+            if let remembered = sectionByRepo[id] { return remembered }
+            return factoryStates[id]?.caps.hasDocs == true
+                || factoryStates[id]?.caps.github == true ? .dashboard : .codeGraph
+        }
+        set { if let id = selectedRepo { sectionByRepo[id] = newValue } }
+    }
+
+    public var currentFactory: FactoryState? {
+        selectedRepo.flatMap { factoryStates[$0] }
+    }
+
+    public func factoryState(for id: UUID) -> FactoryState {
+        factoryStates[id] ?? FactoryState()
+    }
+
+    /// Mutate a repo's factory state in place (creating it if absent).
+    func mutateFactory(_ id: UUID, _ change: (inout FactoryState) -> Void) {
+        var state = factoryStates[id] ?? FactoryState()
+        change(&state)
+        factoryStates[id] = state
+    }
+
+    /// Inject a fully-formed factory state (tests only).
+    public func testInjectFactory(_ state: FactoryState, to id: UUID) {
+        factoryStates[id] = state
+    }
+}
+
+/// Keys a factory-refresh task per (repo, dataset) so refreshes cancel
+/// and replace cleanly.
+public struct FactoryTaskKey: Hashable, Sendable {
+    public let repo: UUID
+    public let dataset: FactoryDataset
+    public init(repo: UUID, dataset: FactoryDataset) {
+        self.repo = repo; self.dataset = dataset
     }
 }
