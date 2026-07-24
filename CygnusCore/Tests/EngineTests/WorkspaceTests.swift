@@ -81,7 +81,9 @@ import CygnusObservation
         let repo = try await workspace.register(path: root)
         let result = try await workspace.index(repo)
 
-        #expect(result.revision.raw == 1)
+        // Revision 1 = observed facts, revision 2 = derived rollups;
+        // the result reports the final revision the graph is at.
+        #expect(result.revision.raw == 2)
         #expect(result.filesAnalyzed == 3)
 
         let store = await workspace.store
@@ -132,11 +134,13 @@ import CygnusObservation
         let store = await workspace.store
         let before = try Projections.dependencyGraph(store: store)
 
+        let revisionsAfterFirst = try store.revisions().count   // observed + derive
+
         let second = try await workspace.index(repo)
         #expect(second.filesChanged == 0)
-        // No empty revision minted for a no-op re-index.
+        // No revision minted for a no-op re-index — observed or derived.
         #expect(second.revision == first.revision)
-        #expect(try store.revisions().count == 1)
+        #expect(try store.revisions().count == revisionsAfterFirst)
         let after = try Projections.dependencyGraph(store: store)
         #expect(after.relationships.count == before.relationships.count)
     }

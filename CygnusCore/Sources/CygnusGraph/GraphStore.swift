@@ -139,10 +139,16 @@ public protocol GraphStore: Sendable {
 
     func entity(stableKey: StableKey, at query: RevisionQuery) throws -> ResolvedEntity?
     func entities(kind: EntityKind, at query: RevisionQuery) throws -> [ResolvedEntity]
+    /// Batch id → entity resolution — derivers and projection
+    /// builders map relationship endpoints back to keys with this.
+    func entities(ids: [EntityID], at query: RevisionQuery) throws -> [ResolvedEntity]
     func relationships(from source: StableKey, kind: RelationshipKind?,
                        at query: RevisionQuery) throws -> [Relationship]
     func relationships(to target: StableKey, kind: RelationshipKind?,
                        at query: RevisionQuery) throws -> [Relationship]
+    /// Whole-graph scan of one relationship kind — the bulk read a
+    /// rollup deriver starts from.
+    func relationships(kind: RelationshipKind, at query: RevisionQuery) throws -> [Relationship]
 
     /// Prefix/substring name search over the current graph (FTS).
     func searchNames(_ text: String, limit: Int) throws -> [ResolvedEntity]
