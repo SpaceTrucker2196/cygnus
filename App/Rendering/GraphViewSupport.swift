@@ -12,19 +12,35 @@ enum GraphPalette {
         .mint, .red, .cyan, .brown,
     ]
 
-    static func groupColors(for scene: GraphScene) -> [String: Color] {
-        let groups = Set(scene.nodes.map { GraphScene.group(of: $0) })
-            .subtracting(["modules"])
-            .sorted()
-        var colors: [String: Color] = ["modules": .purple]
-        for (index, group) in groups.enumerated() {
-            colors[group] = hues[index % hues.count]
+    /// Colors keyed by the active grouping's cluster names. Semantic
+    /// groups get pinned colors (tests are always desaturated gray,
+    /// imported modules always purple — the convention of segregating
+    /// tests/externals visually); the rest take stable sorted hues.
+    static func colors(for scene: GraphScene,
+                       grouping: GraphScene.Grouping) -> [String: Color] {
+        let keys = Set(scene.nodes.compactMap {
+            GraphScene.clusterKey(of: $0, grouping: grouping) ?? GraphScene.group(of: $0)
+        })
+        var colors: [String: Color] = [:]
+        var hueIndex = 0
+        for key in keys.sorted() {
+            switch key {
+            case "modules", "Modules": colors[key] = .purple
+            case "Tests": colors[key] = .gray
+            default:
+                colors[key] = hues[hueIndex % hues.count]
+                hueIndex += 1
+            }
         }
         return colors
     }
 
-    static func color(for node: GraphSnapshot.Node, in colors: [String: Color]) -> Color {
-        colors[GraphScene.group(of: node)] ?? .gray
+    static func color(for node: GraphSnapshot.Node,
+                      grouping: GraphScene.Grouping,
+                      in colors: [String: Color]) -> Color {
+        let key = GraphScene.clusterKey(of: node, grouping: grouping)
+            ?? GraphScene.group(of: node)
+        return colors[key] ?? .gray
     }
 }
 
@@ -58,15 +74,22 @@ enum LabelMode: String, CaseIterable {
     case auto = "Auto", on = "On", off = "Off"
 }
 
-/// Zoom / label controls for the graph view.
+/// Zoom / label / grouping controls for the graph view.
 struct GraphControlBar: View {
     @Binding var zoom: CGFloat
     @Binding var labelMode: LabelMode
     @Binding var labelSize: Double
     @Binding var legendShown: Bool
+    @Binding var grouping: GraphScene.Grouping
 
     var body: some View {
         HStack(spacing: 14) {
+            Picker("Group", selection: $grouping) {
+                ForEach(GraphScene.Grouping.allCases, id: \.self) { Text($0.rawValue) }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 230)
+            .help("How nodes cluster: project area, prod/tests/modules layers, or architectural roles (MVVM/MVC naming)")
             HStack(spacing: 6) {
                 Image(systemName: "minus.magnifyingglass").foregroundStyle(.secondary)
                 Slider(value: Binding(get: { log2(zoom) }, set: { zoom = pow(2, $0) }),

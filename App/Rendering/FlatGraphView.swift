@@ -17,6 +17,14 @@ struct FlatGraphView: View {
     @State private var labelMode: LabelMode = .auto
     @State private var labelSize: Double = 11
     @State private var legendShown = true
+    @State private var grouping: GraphScene.Grouping = .area
+
+    /// Layout restarts when either the scene or the grouping changes;
+    /// warm-start keeps existing nodes near where they were.
+    private struct LayoutInput: Equatable {
+        let scene: GraphScene
+        let grouping: GraphScene.Grouping
+    }
 
     var body: some View {
         GeometryReader { geometry in
@@ -30,22 +38,26 @@ struct FlatGraphView: View {
                     withAnimation(.snappy) { zoom = 1; pan = .zero }
                 }
         }
-        .task(id: scene) {
+        .task(id: LayoutInput(scene: scene, grouping: grouping)) {
             // Warm-start from wherever nodes already are: when the
             // scene grows during analysis, new nodes join a stable
             // layout instead of restarting it.
             for await next in LayoutEngine(scene: scene,
-                                           initial: frame.positions).frames() {
+                                           initial: frame.positions,
+                                           clusters: scene.clusters(grouping: grouping))
+                .frames() {
                 frame = next
             }
         }
         .overlay(alignment: .top) {
             GraphControlBar(zoom: $zoom, labelMode: $labelMode,
-                            labelSize: $labelSize, legendShown: $legendShown)
+                            labelSize: $labelSize, legendShown: $legendShown,
+                            grouping: $grouping)
         }
         .overlay(alignment: .bottomLeading) {
             if legendShown {
-                GraphLegendView(scene: scene, colors: GraphPalette.groupColors(for: scene))
+                GraphLegendView(scene: scene,
+                                colors: GraphPalette.colors(for: scene, grouping: grouping))
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -59,7 +71,8 @@ struct FlatGraphView: View {
     private func canvas(in size: CGSize) -> some View {
         Canvas { context, size in
             let transform = viewTransform(in: size)
-            let colors = GraphPalette.groupColors(for: scene)
+            let colors = GraphPalette.colors(for: scene, grouping: grouping)
+            drawGroupRegions(context: context, transform: transform, colors: colors)
             var edgePath = Path()
             for edge in scene.edges {
                 guard let from = frame.positions[edge.from],
@@ -80,7 +93,8 @@ struct FlatGraphView: View {
                                   width: radius * 2, height: radius * 2)
                 let isSelected = node.id == store.selectedNode
                 context.fill(Path(ellipseIn: rect),
-                             with: .color(GraphPalette.color(for: node, in: colors)))
+                             with: .color(GraphPalette.color(for: node, grouping: grouping,
+                                                             in: colors)))
                 if isSelected {
                     context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
                                    with: .color(.accentColor), lineWidth: 2)
@@ -94,6 +108,46 @@ struct FlatGraphView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+    }
+
+    /// Tinted, labeled region behind each cluster (background tint +
+    /// label reads better than outlines alone at low zoom). The hull
+    /// is computed in screen space and padded by stroking the same
+    /// path wide with round joins — a soft blob, not a hard polygon.
+    private func drawGroupRegions(context: GraphicsContext,
+                                  transform: CGAffineTransform,
+                                  colors: [String: Color]) {
+        guard grouping != .none else { return }
+        var members: [String: [SIMD2<Double>]] = [:]
+        for node in scene.nodes {
+            guard let position = frame.positions[node.id],
+                  let key = GraphScene.clusterKey(of: node, grouping: grouping)
+            else { continue }
+            let point = CGPoint(x: position.x, y: position.y).applying(transform)
+            members[key, default: []].append(SIMD2(point.x, point.y))
+        }
+        let padding: CGFloat = 26
+        for (key, points) in members.sorted(by: { $0.key < $1.key }) {
+            let hull = ConvexHull.hull(of: points)
+            guard let first = hull.first else { continue }
+            var path = Path()
+            path.move(to: CGPoint(x: first.x, y: first.y))
+            for point in hull.dropFirst() {
+                path.addLine(to: CGPoint(x: point.x, y: point.y))
+            }
+            path.closeSubpath()
+            let color = colors[key] ?? .gray
+            let style = StrokeStyle(lineWidth: padding * 2,
+                                    lineCap: .round, lineJoin: .round)
+            context.stroke(path, with: .color(color.opacity(0.10)), style: style)
+            context.fill(path, with: .color(color.opacity(0.10)))
+            // Label above the region's topmost point.
+            let top = hull.min(by: { $0.y < $1.y }) ?? first
+            context.draw(
+                Text(key).font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(color.opacity(0.85)),
+                at: CGPoint(x: top.x, y: top.y - padding - 9))
+        }
     }
 
     // MARK: - Transform
