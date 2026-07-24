@@ -24,6 +24,34 @@ struct MemoryGovernorTests {
         #expect(governor.usedBytes > 0)   // real sample, not a stub
     }
 
+    @Test func runningAnalysisIsCancelledAtTheHardLimit() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-mem-cancel-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = WorkspaceStore(
+            engine: FixtureGraphEngine(),
+            persistence: WorkspacePersistence(
+                fileURL: base.appendingPathComponent("workspace.json")),
+            memory: MemoryGovernor(limitBytes: 1))   // always critical
+        let repo = RegisteredRepo(displayName: "r", pathHint: "/tmp/r", bookmark: Data())
+        store.testInject(repo: repo)
+
+        // First event lands normally (idle → analyzing); the next event
+        // arriving while critical must kill the run, not stream on.
+        store.testApply(.phase("extracting"), to: repo.id)
+        guard case .analyzing? = store.states[repo.id] else {
+            Issue.record("expected analyzing after first event")
+            return
+        }
+        store.testApply(.progress(0.5), to: repo.id)
+        guard case .failed(let message)? = store.states[repo.id] else {
+            Issue.record("expected cancellation, got \(String(describing: store.states[repo.id]))")
+            return
+        }
+        #expect(message.contains("Stopped"))
+    }
+
     @Test func analyzeRefusesAtTheHardLimit() throws {
         let base = FileManager.default.temporaryDirectory
             .appendingPathComponent("cygnus-mem-\(UUID().uuidString)")

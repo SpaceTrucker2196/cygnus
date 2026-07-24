@@ -14,11 +14,15 @@ public struct LocalFSProvider: Sendable {
     public let root: URL
     public let contentStore: ContentStore
 
-    /// Directory names never descended into.
+    /// Directory names never descended into. `build` and
+    /// `SourcePackages` matter at machine-survival scale: an Xcode
+    /// DerivedData-style `build/…/SourcePackages/checkouts` tree
+    /// carries entire vendored dependencies (SQLite amalgamation
+    /// sources included) and once drove extraction to 43 GB.
     public static let excludedDirectories: Set<String> = [
         ".git", ".build", ".swiftpm", "DerivedData", "node_modules",
         ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache",
-        "Pods", "Carthage", "dist", "target",
+        "Pods", "Carthage", "dist", "target", "build", "SourcePackages",
     ]
 
     /// File names never captured.

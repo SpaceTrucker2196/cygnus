@@ -10,6 +10,30 @@ import CygnusObservation
 // incremental re-index. This is the engine's acceptance suite.
 
 @Suite struct WorkspaceTests {
+    @Test func indexAbortsAtHardMemoryLimitWithoutCommitting() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-hardlimit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let workspace = try CygnusWorkspace(directory: dir)
+        let repo = try await workspace.register(path: root)
+
+        // A 1-byte hard limit is always exceeded by the live process —
+        // the abort must fire and the store must stay uncommitted.
+        let strangled = IndexLimits(maxConcurrentExtractions: 2,
+                                    softMemoryLimitBytes: nil,
+                                    hardMemoryLimitBytes: 1)
+        await #expect(throws: WorkspaceError.self) {
+            try await workspace.index(repo, limits: strangled)
+        }
+        #expect(try await workspace.store.currentRevision() == nil)
+
+        // Same workspace recovers with a sane limit.
+        let result = try await workspace.index(repo)
+        #expect(result.entityCount > 0)
+    }
+
     func makeFixture() throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cygnus-e2e-\(UUID().uuidString)")
