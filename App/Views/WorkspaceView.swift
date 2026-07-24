@@ -6,7 +6,6 @@ import CygnusKit
 
 struct WorkspaceView: View {
     @Environment(WorkspaceStore.self) private var store
-    @State private var inspectorShown = true
 
     var body: some View {
         NavigationSplitView {
@@ -14,19 +13,6 @@ struct WorkspaceView: View {
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260)
         } detail: {
             RepoDetailView()
-                .inspector(isPresented: $inspectorShown) {
-                    EntityInspectorView()
-                        .inspectorColumnWidth(min: 260, ideal: 300)
-                }
-                .toolbar {
-                    ToolbarItem {
-                        Button {
-                            inspectorShown.toggle()
-                        } label: {
-                            Label("Inspector", systemImage: "sidebar.trailing")
-                        }
-                    }
-                }
         }
         .navigationTitle(currentRepoName)
     }

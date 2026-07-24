@@ -80,7 +80,7 @@ extension WorkspaceStore {
         }
     }
 
-    nonisolated static func describe(_ error: any Error) -> String {
+    public nonisolated static func describe(_ error: any Error) -> String {
         switch error {
         case ToolingError.toolNotFound(let tool): "`\(tool.rawValue)` not found — set its path in Settings."
         case ToolingError.notAuthenticated: "Not authenticated — run `gh auth login`."
