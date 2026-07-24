@@ -38,12 +38,29 @@ public struct SnapshotIndex: Sendable {
         self.incoming = incoming
 
         let byID = self.byID
+        // The containment relation is a DAG, not a tree: the same
+        // declaration key can be declared from several files (split
+        // originals + a combined/generated copy, extensions across
+        // files). Memoize per node — without this, every shared
+        // subtree rebuilds once per path and materialization goes
+        // exponential (a real repo drove this to 25 GB). The `building`
+        // set cuts true cycles (self-declares) instead of recursing
+        // forever.
+        var memo: [String: TreeNode] = [:]
+        var building = Set<String>()
         func build(_ id: String) -> TreeNode? {
+            if let cached = memo[id] { return cached }
             guard let node = byID[id] else { return nil }
+            guard building.insert(id).inserted else { return nil }   // cycle: cut here
+            defer { building.remove(id) }
+            var seen = Set<String>()
             let kids = (children[id] ?? [])
+                .filter { seen.insert($0).inserted }    // duplicate edges → one row
                 .compactMap(build)
                 .sorted { $0.node.label.localizedStandardCompare($1.node.label) == .orderedAscending }
-            return TreeNode(node: node, children: kids.isEmpty ? nil : kids)
+            let tree = TreeNode(node: node, children: kids.isEmpty ? nil : kids)
+            memo[id] = tree
+            return tree
         }
         self.trees = snapshot.nodes
             .filter { $0.kind == "core:repository" && !contained.contains($0.id) }
