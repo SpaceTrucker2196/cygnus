@@ -73,7 +73,10 @@ public final class WorkspaceStore {
         // An ops dashboard shouldn't open blank: land on the first
         // registered repo.
         selectedRepo = repos.first?.id
-        memory.startSampling()
+        // No side effects here beyond loading: WorkspaceStore is built
+        // during App.init, and spawning tasks that early suppresses
+        // window creation on this OS (see PROGRESS.md 2026-07-20).
+        // Sampling starts from the meter view, post-launch.
     }
 
     // MARK: - Registry

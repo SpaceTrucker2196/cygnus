@@ -81,6 +81,10 @@ struct MemoryMeterView: View {
                 .tint(tint)
         }
         .help("Memory usage against the \(governor.summary.split(separator: "/").last ?? "") hard limit")
+        // Post-launch side effect on purpose: starting the sampler in
+        // WorkspaceStore.init (App.init time) suppressed window
+        // creation on this OS.
+        .task { governor.startSampling() }
     }
 
     private var tint: Color {
