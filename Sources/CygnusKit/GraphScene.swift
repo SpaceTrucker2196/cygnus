@@ -63,4 +63,107 @@ public struct GraphScene: Sendable, Equatable {
         }
         return String(first)
     }
+
+    // MARK: - Grouping
+
+    /// How the graph view organizes nodes into spatial clusters.
+    /// Grouping is a projection choice — paths and kinds are observed
+    /// facts; the partition drawn from them is disposable render state.
+    public enum Grouping: String, CaseIterable, Sendable {
+        /// Project areas: top-level directory, one level deeper under
+        /// source/test umbrella folders ("Sources/CygnusKit").
+        case area = "Area"
+        /// Three bands: production code, test code, imported modules.
+        case layer = "Layer"
+        /// Architectural roles by naming convention (MVVM / MVC):
+        /// Models, Views, ViewModels, Controllers, Services, Stores.
+        case pattern = "Pattern"
+        /// No spatial grouping; pure force layout (color still by area).
+        case none = "None"
+    }
+
+    /// Path components that mark everything beneath them as test code.
+    private static let testDirectories: Set<Substring> = [
+        "Tests", "tests", "test", "Test", "__tests__",
+        "spec", "specs", "Spec", "UITests",
+    ]
+
+    /// A node is test code when it lives under a test directory or its
+    /// filename follows a test naming convention (`FooTests.swift`,
+    /// `test_foo.py`, `foo_test.c`, `foo.spec.ts`).
+    public static func isTest(_ node: GraphSnapshot.Node) -> Bool {
+        guard let path = node.path else { return false }
+        let components = path.split(separator: "/")
+        if components.dropLast().contains(where: { testDirectories.contains($0) }) {
+            return true
+        }
+        guard let file = components.last else { return false }
+        let stem = file.prefix(while: { $0 != "." })
+        return stem.hasSuffix("Tests") || stem.hasSuffix("Test")
+            || stem.hasPrefix("test_") || stem.hasSuffix("_test")
+            || file.contains(".test.") || file.contains(".spec.")
+    }
+
+    /// Architectural role by naming convention. This is *convention
+    /// reading*, not inference: "FooViewModel.swift" observably follows
+    /// the ViewModel naming pattern; whether it truly is one is a
+    /// derived-layer question for the engine. Order matters — ViewModel
+    /// before View before Model, so compound names classify correctly.
+    public static func patternRole(of node: GraphSnapshot.Node) -> String {
+        guard node.kind != "core:module" else { return "Modules" }
+        if isTest(node) { return "Tests" }
+        guard let path = node.path else { return "Other" }
+        let file = path.split(separator: "/").last ?? ""
+        let stem = String(file.prefix(while: { $0 != "." }))
+        let directories = Set(path.split(separator: "/").dropLast().map(String.init))
+
+        func matches(_ suffixes: [String], _ folders: [String]) -> Bool {
+            suffixes.contains(where: stem.hasSuffix)
+                || folders.contains(where: directories.contains)
+        }
+        if matches(["ViewModel", "ViewModels"], ["ViewModels"]) { return "ViewModels" }
+        if matches(["View", "Screen", "Page", "Window", "Cell"], ["Views", "Screens", "UI"]) {
+            return "Views"
+        }
+        if matches(["Controller", "Coordinator", "Router", "Presenter"],
+                   ["Controllers", "Coordinators"]) { return "Controllers" }
+        if matches(["Store", "Repository", "Persistence", "Database", "DAO"],
+                   ["Stores", "Repositories"]) { return "Stores" }
+        if matches(["Service", "Client", "Provider", "Manager", "Engine", "API"],
+                   ["Services", "Providers", "Networking"]) { return "Services" }
+        if matches(["Model", "Entity", "DTO", "Record"], ["Models", "Entities"]) {
+            return "Models"
+        }
+        return "Other"
+    }
+
+    /// The cluster key a node belongs to under a grouping mode, or nil
+    /// when the mode imposes no spatial grouping.
+    public static func clusterKey(of node: GraphSnapshot.Node,
+                                  grouping: Grouping) -> String? {
+        switch grouping {
+        case .none: nil
+        case .area: group(of: node)
+        case .layer:
+            if node.kind == "core:module" { "Modules" }
+            else if isTest(node) { "Tests" }
+            else { "Production" }
+        case .pattern: patternRole(of: node)
+        }
+    }
+
+    /// Node → cluster key for every node in the scene (empty for
+    /// `.none`). This is what the layout engine and region renderer
+    /// consume; they never re-derive membership separately.
+    public func clusters(grouping: Grouping) -> [String: String] {
+        guard grouping != .none else { return [:] }
+        var clusters: [String: String] = [:]
+        clusters.reserveCapacity(nodes.count)
+        for node in nodes {
+            if let key = Self.clusterKey(of: node, grouping: grouping) {
+                clusters[node.id] = key
+            }
+        }
+        return clusters
+    }
 }

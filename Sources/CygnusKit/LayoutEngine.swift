@@ -26,12 +26,15 @@ public struct LayoutEngine: Sendable {
     private let scene: GraphScene
     private let seed: UInt64
     private let initial: [String: SIMD2<Double>]
+    private let clusters: [String: String]
 
     public init(scene: GraphScene, seed: UInt64 = 0xC516,
-                initial: [String: SIMD2<Double>] = [:]) {
+                initial: [String: SIMD2<Double>] = [:],
+                clusters: [String: String] = [:]) {
         self.scene = scene
         self.seed = seed
         self.initial = initial
+        self.clusters = clusters
     }
 
     /// Progressive layout frames, ending with a settled frame (or on
@@ -45,9 +48,10 @@ public struct LayoutEngine: Sendable {
         let scene = self.scene
         let seed = self.seed
         let initial = self.initial
+        let clusters = self.clusters
         return AsyncStream(LayoutFrame.self, bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task.detached(priority: .userInitiated) {
-                Self.run(scene: scene, seed: seed, initial: initial,
+                Self.run(scene: scene, seed: seed, initial: initial, clusters: clusters,
                          maxIterations: maxIterations, emitEvery: emitEvery) { frame in
                     continuation.yield(frame)
                     return !Task.isCancelled
@@ -61,6 +65,7 @@ public struct LayoutEngine: Sendable {
     /// Synchronous solver core. `emit` returns false to stop early.
     static func run(scene: GraphScene, seed: UInt64,
                     initial: [String: SIMD2<Double>] = [:],
+                    clusters: [String: String] = [:],
                     maxIterations: Int, emitEvery: Int,
                     emit: (LayoutFrame) -> Bool) {
         let ids = scene.nodes.map(\.id)
@@ -91,6 +96,33 @@ public struct LayoutEngine: Sendable {
 
         let k = 60.0
         let cutoff = 2.5 * k
+
+        // Cluster anchors: one fixed point per group, on a ring whose
+        // radius grows with graph size. Anchors depend only on the
+        // sorted group names — the same groups always land in the same
+        // directions, so users keep their spatial memory across
+        // re-analyses and grouping toggles (software-cartography
+        // stability, the Kuhn/ELK "consistent layout" principle).
+        let groupNames = Set(clusters.values).sorted()
+        var anchorByGroup: [String: SIMD2<Double>] = [:]
+        if groupNames.count == 1 {
+            anchorByGroup[groupNames[0]] = .zero
+        } else {
+            let ringRadius = max(2.0 * k, 0.75 * k * Double(n).squareRoot())
+            for (index, name) in groupNames.enumerated() {
+                let angle = 2 * .pi * Double(index) / Double(groupNames.count)
+                anchorByGroup[name] = SIMD2(ringRadius * cos(angle),
+                                            ringRadius * sin(angle))
+            }
+        }
+        let anchorForNode: [SIMD2<Double>?] = ids.map { id in
+            clusters[id].flatMap { anchorByGroup[$0] }
+        }
+        // Toward the anchor per step; strong enough to overcome
+        // cross-group edge springs, weak enough that intra-group
+        // structure still comes from edges and repulsion.
+        let clusterPull = 0.08
+
         let warmStarted = seededCount * 2 >= n
         var temperature = (warmStarted ? 0.03 : 0.12) * Double(n).squareRoot() * k
         let settleThreshold = 0.5
@@ -142,8 +174,13 @@ public struct LayoutEngine: Sendable {
 
             var maxStep = 0.0
             for i in 0..<n {
-                // Gentle gravity keeps disconnected components on screen.
-                displacement[i] -= pos[i] * 0.03
+                if let anchor = anchorForNode[i] {
+                    // Grouped: cohere around the group's fixed anchor.
+                    displacement[i] += (anchor - pos[i]) * clusterPull
+                } else {
+                    // Gentle gravity keeps disconnected components on screen.
+                    displacement[i] -= pos[i] * 0.03
+                }
                 let length = max((displacement[i] * displacement[i]).sum().squareRoot(), 0.01)
                 let step = min(length, temperature)
                 pos[i] += displacement[i] / length * step
