@@ -51,14 +51,6 @@ final class CygnusUITests: XCTestCase {
         XCTAssertTrue(nodeCounter.waitForExistence(timeout: 15),
                       "flat view did not render its scene overlay")
 
-        // 3D: the orbit hint proves the projection view is up.
-        segment(app, "3D").click()
-        let orbitHint = app.staticTexts
-            .matching(NSPredicate(format: "value CONTAINS[c] 'orbit' OR label CONTAINS[c] 'orbit'"))
-            .firstMatch
-        XCTAssertTrue(orbitHint.waitForExistence(timeout: 20),
-                      "3D view did not render")
-
         // Search finds a declaration; selecting it fills the inspector.
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 5), "search field missing")

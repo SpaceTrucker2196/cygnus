@@ -1,8 +1,8 @@
 import SwiftUI
 import CygnusKit
 
-// Shared pieces for the Flat and 3D graph renderers: group palette,
-// legend, and the view-control bar.
+// Shared pieces for the Flat graph renderer: group palette, legend,
+// and the view-control bar.
 
 enum GraphPalette {
     /// Distinct hues for project areas; assignment is stable within a
@@ -28,7 +28,7 @@ enum GraphPalette {
     }
 }
 
-/// What node size means, what colors mean. Overlaid on both graph views.
+/// What node size means, what colors mean. Overlaid on the graph view.
 struct GraphLegendView: View {
     let scene: GraphScene
     let colors: [String: Color]
@@ -58,7 +58,7 @@ enum LabelMode: String, CaseIterable {
     case auto = "Auto", on = "On", off = "Off"
 }
 
-/// Zoom / label controls shared by both graph views.
+/// Zoom / label controls for the graph view.
 struct GraphControlBar: View {
     @Binding var zoom: CGFloat
     @Binding var labelMode: LabelMode

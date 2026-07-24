@@ -77,9 +77,9 @@ struct ReadyContentView: View {
             switch store.viewMode {
             case .outline:
                 OutlineContainerView()
-            case .flat, .space:
+            case .flat:
                 if store.searchText.isEmpty {
-                    DependencyGraphView(snapshot: snapshot, mode: store.viewMode)
+                    DependencyGraphView(snapshot: snapshot)
                 } else {
                     OutlineContainerView()
                 }
@@ -109,7 +109,6 @@ struct ReadyContentView: View {
 struct DependencyGraphView: View {
     @Environment(WorkspaceStore.self) private var store
     let snapshot: GraphSnapshot
-    let mode: WorkspaceStore.ViewMode
 
     var body: some View {
         let scene = GraphScene.dependencies(from: snapshot,
@@ -120,8 +119,6 @@ struct DependencyGraphView: View {
                 systemImage: "point.3.filled.connected.trianglepath.dotted",
                 description: Text("Only project-internal imports are charted. " +
                                   "Try Filters → Show External Modules."))
-        } else if mode == .space {
-            Orbit3DView(scene: scene)
         } else {
             FlatGraphView(scene: scene)
         }
