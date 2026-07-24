@@ -11,3 +11,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | c9a8321 | 2026-07-24T08:31:14Z | claude-opus-4-8 | 648 | 52593 | 5201828 | 45988 | 4.3789 | Factory + docs providers over git/gh |
 | a11233b | 2026-07-24T08:40:53Z | claude-opus-4-8 | 5191 | 93668 | 15016344 | 88100 | 10.7568 | Wire factory state into WorkspaceStore |
 | c054889 | 2026-07-24T08:48:12Z | claude-opus-4-8 | 3116 | 82450 | 13917159 | 85931 | 9.8947 | Ops dashboard SwiftUI sections |
+| 78a1de7 | 2026-07-24T08:58:21Z | claude-opus-4-8 | 4871 | 55159 | 15221611 | 67181 | 9.6859 | Fix capability/load race; auto-select repo; verify end-to-end |
