@@ -14,3 +14,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 78a1de7 | 2026-07-24T08:58:21Z | claude-opus-4-8 | 4871 | 55159 | 15221611 | 67181 | 9.6859 | Fix capability/load race; auto-select repo; verify end-to-end |
 | 9dac19e | 2026-07-24T20:37:19Z | claude-fable-5,claude-opus-4-8 | 75155 | 322565 | 48400132 | 1139948 | 73.5996 | 5 GB memory ceiling + bounded extraction; 2D graph grouping (area/layer/pattern) |
 | fd9264f | 2026-07-24T20:38:29Z | claude-fable-5 | 598 | 9376 | 1929260 | 6651 | 2.5371 | Pages preview as portrait letter-proportioned thumbnail |
+| 17618c7 | 2026-07-24T20:42:33Z | claude-fable-5 | 14 | 2251 | 1720892 | 2696 | 1.8875 | Double Pages thumbnail to 300 pt |
