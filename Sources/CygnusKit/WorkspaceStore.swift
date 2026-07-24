@@ -28,7 +28,6 @@ public final class WorkspaceStore {
     public enum ViewMode: String, CaseIterable, Sendable {
         case outline = "Outline"
         case flat = "Flat"
-        case space = "3D"
     }
 
     public var selectedRepo: UUID?

@@ -76,6 +76,19 @@
   tagged build. E6 remaining: derived-layer rollups, fuzzy renames,
   IndexStoreDB spike.
 
+## 2026-07-24
+
+- Removed 3D rendering. Both 3D paths (the parked RealityKit
+  `SpaceGraphView`/`GraphSceneBuilder` and the active Canvas-projected
+  `Orbit3DView`) and the `Layout3D` force-layout solver cost too much
+  memory and time to render; deleted along with their tests
+  (`SpaceSceneTests`, `Layout3DTests`). `ViewMode` is now Outline +
+  Flat only; `DependencyGraphView` always renders `FlatGraphView`. The
+  permanent 2D Flat renderer and its shared palette/legend/control-bar
+  are untouched. CygnusCore + CygnusKit `swift test` green, warning-
+  clean build. (UI test still blocked by this session's empty-AX-tree
+  degradation — unrelated.)
+
 ## 2026-07-20
 
 - First real GUI run (Jeff): analysis + Flat view worked on an 846-
