@@ -15,3 +15,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 9dac19e | 2026-07-24T20:37:19Z | claude-fable-5,claude-opus-4-8 | 75155 | 322565 | 48400132 | 1139948 | 73.5996 | 5 GB memory ceiling + bounded extraction; 2D graph grouping (area/layer/pattern) |
 | fd9264f | 2026-07-24T20:38:29Z | claude-fable-5 | 598 | 9376 | 1929260 | 6651 | 2.5371 | Pages preview as portrait letter-proportioned thumbnail |
 | 17618c7 | 2026-07-24T20:42:33Z | claude-fable-5 | 14 | 2251 | 1720892 | 2696 | 1.8875 | Double Pages thumbnail to 300 pt |
+| a2f85ef | 2026-07-24T20:53:25Z | claude-fable-5 | 1228 | 45850 | 12105016 | 43810 | 15.2860 | Hard memory abort in engine, store-side cancel, exclude build/SourcePackages (43 |
