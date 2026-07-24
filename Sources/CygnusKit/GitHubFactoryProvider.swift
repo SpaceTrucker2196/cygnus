@@ -1,0 +1,206 @@
+import Foundation
+
+// The real FactoryProvider: `gh` for GitHub state (issues, runs,
+// checks), `git` for commits, and local file reads for the markdown
+// tables and converge loop. Everything flows through FactoryTooling so
+// it's testable with FixtureTooling + captured JSON.
+
+public struct GitHubFactoryProvider: FactoryProvider {
+    let tooling: any FactoryTooling
+    let timeout: Duration
+
+    public init(tooling: any FactoryTooling = ProcessTooling(), timeout: Duration = .seconds(30)) {
+        self.tooling = tooling
+        self.timeout = timeout
+    }
+
+    // MARK: - Capabilities
+
+    public func detectCapabilities(repoAt url: URL) async -> FactoryCapabilities {
+        var caps = FactoryCapabilities()
+
+        // Remote from origin (non-zero exit is normal for no remote).
+        if let result = try? await tooling.run(.git, ["-C", url.path, "remote", "get-url", "origin"],
+                                               workingDirectory: url, timeout: timeout),
+           result.succeeded {
+            caps.remote = RepoRemote.parse(originURL: result.stdoutString)
+        }
+
+        // gh presence + auth: toolNotFound → unavailable; runs but
+        // non-zero with an auth message → available-but-unauthed.
+        do {
+            let auth = try await tooling.run(.gh, ["auth", "status"],
+                                             workingDirectory: url, timeout: timeout)
+            caps.ghAvailable = true
+            caps.ghAuthenticated = auth.succeeded
+        } catch ToolingError.toolNotFound {
+            caps.ghAvailable = false
+        } catch {
+            caps.ghAvailable = true          // it ran, something else failed
+            caps.ghAuthenticated = false
+        }
+
+        // Local files.
+        let fm = FileManager.default
+        func exists(_ rel: String) -> Bool { fm.fileExists(atPath: url.appendingPathComponent(rel).path) }
+        for candidate in ["agents/converge.md", ".claude/commands/converge.md"] where exists(candidate) {
+            caps.hasConverge = true; caps.convergePath = candidate; break
+        }
+        caps.hasMetrics = exists("METRICS.md")
+        caps.hasLedger = exists("LEDGER.md")
+        caps.hasWorkflows = directoryHasYAML(url.appendingPathComponent(".github/workflows"))
+        caps.hasDocs = FactoryDocScan.hasAnyDoc(repoAt: url)
+        return caps
+    }
+
+    private func directoryHasYAML(_ dir: URL) -> Bool {
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        return entries.contains { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }
+    }
+
+    // MARK: - GitHub (gh)
+
+    private static let issueListFields =
+        "number,title,state,labels,body,createdAt,closedAt,milestone,author"
+
+    public func listIssues(remote: RepoRemote) async throws -> [Issue] {
+        let result = try await tooling.runChecked(.gh, [
+            "issue", "list", "--repo", remote.slug, "--state", "all",
+            "--limit", "200", "--json", Self.issueListFields,
+        ], workingDirectory: nil, timeout: timeout)
+        let dtos = try Self.decoder.decode([IssueDTO].self, from: result.stdout)
+        return dtos.map { $0.toDomain(comments: []) }
+    }
+
+    public func viewIssue(remote: RepoRemote, number: Int) async throws -> Issue {
+        let result = try await tooling.runChecked(.gh, [
+            "issue", "view", String(number), "--repo", remote.slug,
+            "--json", Self.issueListFields + ",comments",
+        ], workingDirectory: nil, timeout: timeout)
+        let dto = try Self.decoder.decode(IssueDTO.self, from: result.stdout)
+        let comments = (dto.comments ?? []).enumerated().map { index, c in
+            IssueComment(id: index, author: c.author?.login ?? "unknown",
+                         body: c.body, createdAt: c.createdAt)
+        }
+        return dto.toDomain(comments: comments)
+    }
+
+    public func listRuns(remote: RepoRemote, limit: Int) async throws -> [WorkflowRun] {
+        let result = try await tooling.runChecked(.gh, [
+            "run", "list", "--repo", remote.slug, "--limit", String(limit),
+            "--json", "databaseId,name,status,conclusion,headSha,headBranch,event,createdAt,url",
+        ], workingDirectory: nil, timeout: timeout)
+        let dtos = try Self.decoder.decode([RunDTO].self, from: result.stdout)
+        return dtos.map { $0.toDomain() }
+    }
+
+    public func checkRuns(remote: RepoRemote, sha: String) async throws -> [CheckRun] {
+        let result = try await tooling.runChecked(.gh, [
+            "api", "repos/\(remote.slug)/commits/\(sha)/check-runs",
+        ], workingDirectory: nil, timeout: timeout)
+        let envelope = try Self.decoder.decode(CheckRunEnvelope.self, from: result.stdout)
+        return envelope.check_runs.map {
+            CheckRun(name: $0.name, status: $0.status, conclusion: $0.conclusion)
+        }
+    }
+
+    // MARK: - git + files
+
+    public func recentCommits(repoAt url: URL, limit: Int) async throws -> [CommitInfo] {
+        let result = try await tooling.runChecked(.git, [
+            "-C", url.path, "log", "-n", String(limit),
+            "--format=%H%x00%h%x00%an%x00%aI%x00%s",
+        ], workingDirectory: url, timeout: timeout)
+        return result.stdoutString
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { FactoryParse.commit(fromLogLine: String($0)) }
+    }
+
+    public func metricsRows(repoAt url: URL) async throws -> [MetricsRow] {
+        guard let text = try Self.readIfExists(url.appendingPathComponent("METRICS.md")) else { return [] }
+        return FactoryParse.metricsRows(text)
+    }
+
+    public func ledgerRows(repoAt url: URL) async throws -> [LedgerRow] {
+        guard let text = try Self.readIfExists(url.appendingPathComponent("LEDGER.md")) else { return [] }
+        return FactoryParse.ledgerRows(text)
+    }
+
+    public func convergePipeline(repoAt url: URL) async throws -> ConvergePipeline? {
+        for candidate in ["agents/converge.md", ".claude/commands/converge.md"] {
+            if let text = try Self.readIfExists(url.appendingPathComponent(candidate)) {
+                let steps = FactoryParse.convergeSteps(text)
+                return steps.isEmpty ? nil : ConvergePipeline(steps: steps, sourcePath: candidate)
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Helpers
+
+    static func readIfExists(_ url: URL) throws -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    static let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.dateDecodingStrategy = .iso8601
+        return d
+    }()
+}
+
+// MARK: - Decodable DTOs (gh --json shapes)
+
+private struct AuthorDTO: Decodable { let login: String?; let name: String? }
+private struct LabelDTO: Decodable { let name: String; let color: String? }
+private struct MilestoneDTO: Decodable { let title: String; let number: Int }
+private struct CommentDTO: Decodable { let author: AuthorDTO?; let body: String; let createdAt: Date }
+
+private struct IssueDTO: Decodable {
+    let number: Int
+    let title: String
+    let state: String          // gh returns "OPEN"/"CLOSED"
+    let labels: [LabelDTO]
+    let body: String
+    let author: AuthorDTO?
+    let createdAt: Date
+    let closedAt: Date?
+    let milestone: MilestoneDTO?
+    let comments: [CommentDTO]?
+
+    func toDomain(comments: [IssueComment]) -> Issue {
+        Issue(
+            number: number,
+            title: title,
+            state: state.lowercased() == "closed" ? .closed : .open,
+            labels: labels.map { IssueLabel(name: $0.name, color: $0.color ?? "cccccc") },
+            body: body,
+            author: author?.login ?? "unknown",
+            createdAt: createdAt,
+            closedAt: closedAt,
+            milestone: milestone.map { Milestone(title: $0.title, number: $0.number) },
+            comments: comments)
+    }
+}
+
+private struct RunDTO: Decodable {
+    let databaseId: Int
+    let name: String
+    let status: String
+    let conclusion: String?
+    let headSha: String
+    let headBranch: String
+    let event: String
+    let createdAt: Date
+    let url: String
+
+    func toDomain() -> WorkflowRun {
+        WorkflowRun(id: databaseId, name: name, status: status, conclusion: conclusion,
+                    headSha: headSha, headBranch: headBranch, event: event,
+                    createdAt: createdAt, url: url)
+    }
+}
+
+private struct CheckRunEnvelope: Decodable { let check_runs: [CheckRunDTO] }
+private struct CheckRunDTO: Decodable { let name: String; let status: String; let conclusion: String? }
