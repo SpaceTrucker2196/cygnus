@@ -17,3 +17,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 17618c7 | 2026-07-24T20:42:33Z | claude-fable-5 | 14 | 2251 | 1720892 | 2696 | 1.8875 | Double Pages thumbnail to 300 pt |
 | a2f85ef | 2026-07-24T20:53:25Z | claude-fable-5 | 1228 | 45850 | 12105016 | 43810 | 15.2860 | Hard memory abort in engine, store-side cancel, exclude build/SourcePackages (43 |
 | 9abc486 | 2026-07-24T21:00:45Z | claude-fable-5 | 1943 | 32479 | 9565130 | 35404 | 11.9166 | Detached analysis pump (UI beachball fix); walk-phase memory budget + autoreleas |
+| ba50ff3 | 2026-07-24T21:04:42Z | claude-fable-5 | 679 | 16559 | 4992483 | 18697 | 6.2012 | Fix windowless launch (sampler task moved out of App-init path) |
