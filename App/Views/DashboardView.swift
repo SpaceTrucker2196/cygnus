@@ -22,10 +22,25 @@ struct DashboardView: View {
                 RecentCommitsCard(commits: state.commits)
             }
             .padding(16)
+            // Full-width previews below the stat grid.
+            VStack(alignment: .leading, spacing: 14) {
+                if !state.caps.screenshots.isEmpty, let root = store.repoURL(repoID) {
+                    ScreenshotsCard(repoRoot: root, screenshots: state.caps.screenshots)
+                }
+                if let pagesURL = state.caps.pagesURL {
+                    PagesPreviewCard(pagesURL: pagesURL)
+                }
+            }
+            .padding([.horizontal, .bottom], 16)
         }
         .background(Color(nsColor: .textBackgroundColor))
         .overlay(alignment: .topTrailing) { refreshButton }
         .overlay { if notAFactory { notFactoryOverlay } }
+        .safeAreaInset(edge: .bottom) {
+            if needsLedger, !notAFactory {
+                InstallFactoryBanner(repoID: repoID)
+            }
+        }
     }
 
     private var notAFactory: Bool {
@@ -35,12 +50,22 @@ struct DashboardView: View {
         return false
     }
 
+    /// Capabilities known and no LEDGER.md: the repo is missing the
+    /// ledger system (and likely the rest of the factory skeleton).
+    private var needsLedger: Bool {
+        if case .loaded(let caps) = state.capabilities { return !caps.hasLedger }
+        return false
+    }
+
     private var notFactoryOverlay: some View {
-        ContentUnavailableView(
-            "Not a Factory Repo",
-            systemImage: "building.2",
-            description: Text("No GitHub remote or dark-factory files detected. The Code Graph section still works on any repo."))
-            .background(.background)
+        ContentUnavailableView {
+            Label("Not a Factory Repo", systemImage: "building.2")
+        } description: {
+            Text("No GitHub remote or dark-factory files detected. The Code Graph section still works on any repo.")
+        } actions: {
+            InstallFactoryButton(repoID: repoID)
+        }
+        .background(.background)
     }
 
     private var refreshButton: some View {
@@ -51,6 +76,89 @@ struct DashboardView: View {
         }
         .buttonStyle(.borderless)
         .padding(12)
+    }
+}
+
+// MARK: - Factory installation
+
+/// Installs the DF_Template skeleton into the repo. Additive only —
+/// existing files are never overwritten — so it's safe on partial
+/// factories. Confirmation dialog states exactly what will happen.
+struct InstallFactoryButton: View {
+    @Environment(WorkspaceStore.self) private var store
+    let repoID: UUID
+    @State private var confirming = false
+    @State private var installing = false
+    @State private var errorMessage: String?
+    @State private var installedCount: Int?
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if let installedCount {
+                Label("\(installedCount) factory files installed — open FIRST_RUN.md to adapt",
+                      systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            } else {
+                Button {
+                    confirming = true
+                } label: {
+                    if installing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Install Factory…", systemImage: "building.2")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(installing)
+            }
+            if let errorMessage {
+                Text(errorMessage).font(.caption).foregroundStyle(.red).lineLimit(3)
+            }
+        }
+        .confirmationDialog(
+            "Install the dark-factory skeleton into this repository?",
+            isPresented: $confirming, titleVisibility: .visible) {
+            Button("Install") { install() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Copies LEDGER.md, FACTORY.md, MISSION.md and the rest of the DF_Template skeleton. Existing files are never overwritten. Nothing is committed.")
+        }
+    }
+
+    private func install() {
+        installing = true
+        errorMessage = nil
+        Task {
+            do {
+                let result = try await store.installFactory(repoID)
+                installedCount = result.installed.count
+            } catch FactoryInstaller.InstallerError.templateMissing(let path) {
+                errorMessage = "Template not found at \(path). Clone DF_Template into ~/projects first."
+            } catch {
+                errorMessage = "\(error)"
+            }
+            installing = false
+        }
+    }
+}
+
+/// Compact bottom banner for repos that are partly a factory (GitHub
+/// remote, maybe docs) but have no ledger system.
+struct InstallFactoryBanner: View {
+    let repoID: UUID
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "book.and.wrench")
+                .foregroundStyle(.secondary)
+            Text("No ledger system in this repository.")
+                .font(.callout)
+            Spacer()
+            InstallFactoryButton(repoID: repoID)
+        }
+        .padding(10)
+        .background(.regularMaterial)
     }
 }
 

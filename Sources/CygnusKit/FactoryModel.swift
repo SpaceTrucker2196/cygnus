@@ -203,15 +203,21 @@ public struct FactoryCapabilities: Sendable, Equatable {
     public var hasLedger: Bool
     public var hasWorkflows: Bool
     public var hasDocs: Bool
+    /// Repo-relative paths of fastlane screenshots (capped scan).
+    public var screenshots: [String]
+    /// The repo's GitHub Pages site, when one is deployed.
+    public var pagesURL: String?
 
     public init(remote: RepoRemote? = nil, ghAvailable: Bool = false,
                 ghAuthenticated: Bool = false, hasConverge: Bool = false,
                 convergePath: String? = nil, hasMetrics: Bool = false,
-                hasLedger: Bool = false, hasWorkflows: Bool = false, hasDocs: Bool = false) {
+                hasLedger: Bool = false, hasWorkflows: Bool = false, hasDocs: Bool = false,
+                screenshots: [String] = [], pagesURL: String? = nil) {
         self.remote = remote; self.ghAvailable = ghAvailable
         self.ghAuthenticated = ghAuthenticated; self.hasConverge = hasConverge
         self.convergePath = convergePath; self.hasMetrics = hasMetrics
         self.hasLedger = hasLedger; self.hasWorkflows = hasWorkflows; self.hasDocs = hasDocs
+        self.screenshots = screenshots; self.pagesURL = pagesURL
     }
 
     public static let empty = FactoryCapabilities()
