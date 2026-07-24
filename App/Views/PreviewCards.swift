@@ -113,7 +113,7 @@ private struct PageThumbnail: View {
     /// Letter portrait: height = width × 11 / 8.5.
     private static let renderHeight: CGFloat = renderWidth * 11 / 8.5
     /// On-screen thumbnail width.
-    private static let thumbWidth: CGFloat = 150
+    private static let thumbWidth: CGFloat = 300
     private static let scale = thumbWidth / renderWidth
 
     var body: some View {
