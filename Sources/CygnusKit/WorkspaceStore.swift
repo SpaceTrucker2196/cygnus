@@ -144,26 +144,60 @@ public final class WorkspaceStore {
         states[id] = .analyzing(phase: "starting", progress: nil)
 
         let engine = self.engine
-        tasks[id] = Task { [weak self] in
-            guard let self else { return }
+        // The event pump runs DETACHED: a plain Task here inherits the
+        // main actor, which puts the whole for-await loop — thousands
+        // of per-file events through an unbounded stream — on the UI
+        // thread and beachballs it. Off main, events are coalesced to
+        // UI rate and indexes are prebuilt; only the ≤10 Hz state
+        // writes hop to the main actor.
+        tasks[id] = Task.detached(priority: .userInitiated) { [weak self] in
             do {
-                guard let url = self.resolveReadableURL(repo) else {
-                    self.states[id] = .needsRelink
+                guard let url = Self.resolveReadableURL(repo) else {
+                    await self?.markNeedsRelink(id)
                     return
                 }
-                try await RepoAccess.withAccess(to: url) { url in
+                try await RepoAccess.withAccess(to: url) { [weak self] url in
+                    var lastForward = ContinuousClock.now - .seconds(1)
                     for try await event in engine.analyze(repoAt: url) {
-                        await self.apply(event, to: id)
+                        // Coalesce the firehose: progress/partial
+                        // events beyond 10 Hz carry no information a
+                        // human can see — drop them here, off main.
+                        // Phase changes and completion always land.
+                        switch event {
+                        case .progress, .partial, .partialCounts:
+                            let now = ContinuousClock.now
+                            guard now - lastForward >= .milliseconds(100) else { continue }
+                            lastForward = now
+                        case .phase, .finished:
+                            break
+                        }
+                        // Index construction is O(n log n) — do it
+                        // here, not on the main actor.
+                        let prepared: SnapshotIndex? = switch event {
+                        case .partial(let snapshot) where snapshot.nodes.count <= 5000:
+                            SnapshotIndex(snapshot)
+                        case .finished(let snapshot):
+                            SnapshotIndex(snapshot)
+                        default: nil
+                        }
+                        await self?.apply(event, prepared: prepared, to: id)
                     }
                 }
-                self.tasks[id] = nil
+                await self?.finishAnalysis(id)
             } catch is CancellationError {
-                self.states[id] = .idle
+                await self?.markIdle(id)
             } catch {
-                self.states[id] = .failed("\(error)")
+                await self?.markFailed(id, message: "\(error)")
             }
         }
     }
+
+    // MARK: Main-actor state writes for the detached pump
+
+    private func markNeedsRelink(_ id: UUID) { states[id] = .needsRelink }
+    private func markIdle(_ id: UUID) { states[id] = .idle }
+    private func markFailed(_ id: UUID, message: String) { states[id] = .failed(message) }
+    private func finishAnalysis(_ id: UUID) { tasks[id] = nil }
 
     public func cancel(_ id: UUID) {
         tasks[id]?.cancel()
@@ -174,8 +208,8 @@ public final class WorkspaceStore {
     /// `pathHint` is authoritative and deterministic; the security-
     /// scoped bookmark is only a fallback for a folder that has moved
     /// out from under its path. Returns nil when neither is readable
-    /// (→ needsRelink).
-    func resolveReadableURL(_ repo: RegisteredRepo) -> URL? {
+    /// (→ needsRelink). Pure filesystem work — callable off main.
+    nonisolated static func resolveReadableURL(_ repo: RegisteredRepo) -> URL? {
         let byPath = URL(fileURLWithPath: repo.pathHint)
         if FileManager.default.isReadableFile(atPath: byPath.path) { return byPath }
         if let viaBookmark = (try? RepoAccess.resolve(repo.bookmark))?.url,
@@ -185,7 +219,10 @@ public final class WorkspaceStore {
         return nil
     }
 
-    private func apply(_ event: AnalysisEvent, to id: UUID) {
+    /// `prepared` is the SnapshotIndex the pump built off-main for
+    /// partial/finished snapshots — apply never constructs one.
+    private func apply(_ event: AnalysisEvent, prepared: SnapshotIndex? = nil,
+                       to id: UUID) {
         // The hard cap must stop work that's already running, not just
         // refuse new work — analysis events stream constantly, so this
         // is a reliable choke point. The engine has its own in-process
@@ -221,17 +258,15 @@ public final class WorkspaceStore {
                                         partial: nil)
                 break
             }
-            // Index rebuilds are O(n) per partial; above this size the
-            // outline waits for the final snapshot.
-            if snapshot.nodes.count <= 5000 {
-                indices[id] = SnapshotIndex(snapshot)
-            }
+            // Index prebuilt off-main by the pump; oversized partials
+            // arrive without one — the outline waits for the final.
+            if let prepared { indices[id] = prepared }
             states[id] = .analyzing(phase: current.phase, progress: current.progress,
                                     partial: snapshot)
         case .partialCounts:
             break
         case .finished(let snapshot):
-            indices[id] = SnapshotIndex(snapshot)
+            indices[id] = prepared ?? SnapshotIndex(snapshot)
             states[id] = .ready(snapshot)
         }
     }

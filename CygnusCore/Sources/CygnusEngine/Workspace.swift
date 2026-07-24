@@ -97,7 +97,10 @@ public actor CygnusWorkspace {
         let root = URL(fileURLWithPath: rootPath)
 
         let provider = LocalFSProvider(root: root, contentStore: contentStore)
-        let manifest = try provider.snapshot()
+        // The walk ingests the whole working tree — it must honour the
+        // same hard limit as extraction or a huge repo OOMs before
+        // extraction even starts.
+        let manifest = try provider.snapshot(budget: { try limits.checkHardLimit() })
         progress?(IndexProgress(phase: "snapshot", completed: 1, total: 1,
                                 manifest: manifest.files))
 

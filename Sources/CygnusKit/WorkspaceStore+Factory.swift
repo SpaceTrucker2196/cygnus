@@ -10,7 +10,7 @@ extension WorkspaceStore {
     /// Resolve a repo's folder URL (pathHint first, bookmark fallback).
     public func repoURL(_ id: UUID) -> URL? {
         guard let repo = repos.first(where: { $0.id == id }) else { return nil }
-        return resolveReadableURL(repo) ?? URL(fileURLWithPath: repo.pathHint)
+        return Self.resolveReadableURL(repo) ?? URL(fileURLWithPath: repo.pathHint)
     }
 
     // MARK: - Orchestration
