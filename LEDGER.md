@@ -23,3 +23,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | e4b9672 | 2026-07-25T00:49:28Z | claude-fable-5 | 1474 | 78749 | 29615272 | 1253849 | 58.6444 | Sweep fixes (blue tests, inspector code pane, workspace-cache crash fix) + v0.1. |
 | 8bb0c8a | 2026-07-25T00:57:58Z | claude-fable-5 | 1615 | 33169 | 14337274 | 41043 | 16.8327 | E6 rename detection: exact+fuzzy manifest-diff renames, core:renamedFrom breadcr |
 | 3ebca65 | 2026-07-25T01:04:32Z | claude-fable-5 | 7809 | 30833 | 14955834 | 36763 | 17.3108 | IndexStoreDB paper spike + concurrent-analysis sanitizer reproduction harness |
+| ab46ba3 | 2026-07-25T03:52:33Z | claude-fable-5 | 1315 | 44333 | 18028698 | 1407598 | 48.4105 | Coverage halo mode: llvm-cov artifact provider + per-node halo rendering |
