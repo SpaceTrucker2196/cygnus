@@ -31,3 +31,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | de3edc4 | 2026-07-25T04:44:44Z | claude-fable-5 | 1257 | 28274 | 15686443 | 22830 | 17.5693 | IndexStoreDB adopted: pinned dep, IndexStoreReader actor, live smoke on cygnus's |
 | 04655dd | 2026-07-25T04:45:44Z | claude-fable-5 | 12 | 1933 | 3300066 | 4271 | 3.4823 | S7 portfolio overview: all-repos aggregate + per-repo cards |
 | 06327c1 | 2026-07-25T04:59:11Z | claude-fable-5 | 2655 | 54506 | 29305401 | 63182 | 33.3209 | Reference enrichment: index-store observations → derived core:references edges,  |
+| 03dc38e | 2026-07-25T17:13:38Z | claude-fable-5,claude-opus-4-8 | 2156 | 35887 | 17578752 | 3136549 | 59.5320 | S7 issue actions: create/comment/close-reopen production orders via gh, with tes |
