@@ -35,3 +35,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | a460061 | 2026-07-25T17:21:13Z | claude-opus-4-8 | 937 | 36125 | 19317026 | 50464 | 11.0710 | Symbol-level decl→decl reference edges via index-store definition-location mappi |
 | e53af8f | 2026-07-25T17:28:13Z | claude-opus-4-8 | 791 | 55409 | 17308192 | 49384 | 10.5371 | Converge Terminal handoff + symbol reference graph view (Code/Symbols picker) |
 | 628cf6d | 2026-07-25T17:35:25Z | claude-opus-4-8 | 2781 | 81552 | 19384312 | 95853 | 12.7034 | 2D pattern visualizer: cycle detection+highlight, focus/blast-radius mode, live  |
+| 7175eb7 | 2026-07-25T17:39:00Z | claude-opus-4-8 | 7886 | 29368 | 13738237 | 37729 | 8.0200 | Structural Role grouping from dependency fan-in/out (Core/Hub/Entry/Leaf), group |
