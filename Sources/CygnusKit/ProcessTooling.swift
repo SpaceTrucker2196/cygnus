@@ -98,28 +98,34 @@ private final class ProcessRunner: @unchecked Sendable {
         process.standardOutput = outPipe
         process.standardError = errPipe
 
-        // Drain both pipes as data arrives — synchronous appends under
-        // the lock preserve byte order.
-        outPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            self?.appendStdout(chunk)
-        }
-        errPipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
-            let chunk = handle.availableData
-            guard !chunk.isEmpty else { return }
-            self?.appendStderr(chunk)
-        }
-
-        process.terminationHandler = { [weak self] _ in
-            self?.complete(with: nil)
-        }
+        // Drain each pipe on its own thread with a blocking read to
+        // EOF — NOT readabilityHandler. A handler runs on a shared
+        // queue and can fire concurrently with completion tearing the
+        // FileHandle down; FileHandle is not thread-safe, so that race
+        // corrupted the heap and crashed later in unrelated code (GRDB
+        // string binds). Blocking reads own the handle for their whole
+        // life, and completion only reads the resulting Data under the
+        // lock — no shared FileHandle access, no race.
+        let group = DispatchGroup()
+        drain(outPipe, isStdout: true, group: group)
+        drain(errPipe, isStdout: false, group: group)
 
         do {
             try process.run()
         } catch {
+            // Child never started; close the write ends so the reader
+            // threads hit EOF and don't block forever.
+            try? outPipe.fileHandleForWriting.close()
+            try? errPipe.fileHandleForWriting.close()
             resume(.failure(ToolingError.spawnFailed(tool, error.localizedDescription)))
             return
+        }
+
+        // Both readers reach EOF once the child exits and closes its
+        // pipe ends — the natural "process is done and fully drained"
+        // signal for the success path.
+        group.notify(queue: .global(qos: .userInitiated)) { [weak self] in
+            self?.complete(with: nil)
         }
 
         let tool = self.tool
@@ -128,13 +134,8 @@ private final class ProcessRunner: @unchecked Sendable {
             guard !Task.isCancelled else { return }
             self?.complete(with: .timedOut(tool))
         }
-        // Install under the lock: the termination handler can fire —
-        // and read `timeoutTask` in complete() — before this line runs
-        // for a fast-exiting child. The unlocked assignment here was a
-        // data race (caught by TSan in every session) whose torn
-        // reference corrupted the heap and crashed later in unrelated
-        // code. If completion already happened, the watchdog has no
-        // job — cancel it instead of installing it.
+        // Install under the lock so it can't race a completion that
+        // already happened for a fast-exiting child.
         lock.lock()
         if finished {
             lock.unlock()
@@ -149,17 +150,26 @@ private final class ProcessRunner: @unchecked Sendable {
         complete(with: .cancelled)
     }
 
-    private func appendStdout(_ chunk: Data) {
-        lock.lock(); stdout.append(chunk); lock.unlock()
+    /// Read a pipe to EOF on a background thread, storing the result
+    /// under the lock. `group` tracks completion of both readers.
+    private func drain(_ pipe: Pipe, isStdout: Bool, group: DispatchGroup) {
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let self {
+                self.lock.lock()
+                if isStdout { self.stdout = data } else { self.stderr = data }
+                self.lock.unlock()
+            }
+            group.leave()
+        }
     }
 
-    private func appendStderr(_ chunk: Data) {
-        lock.lock(); stderr.append(chunk); lock.unlock()
-    }
-
-    /// Finalise once: drain any remaining buffered output, tear down
-    /// handlers, and resume the continuation. `error != nil` means
-    /// timeout/cancel — terminate the still-running child first.
+    /// Finalise once. `error != nil` means timeout/cancel — terminate
+    /// the still-running child (its EOF then fires the success path,
+    /// which is ignored by the `finished` guard). The success path is
+    /// only reached via `group.notify`, so both readers have finished
+    /// and stdout/stderr are complete.
     private func complete(with error: ToolingError?) {
         lock.lock()
         if finished { lock.unlock(); return }
@@ -176,22 +186,11 @@ private final class ProcessRunner: @unchecked Sendable {
             process.terminate()
         }
 
-        // Flush whatever is left in the pipes, then detach handlers.
-        let restOut = outPipe.fileHandleForReading.readabilityHandler
-        outPipe.fileHandleForReading.readabilityHandler = nil
-        errPipe.fileHandleForReading.readabilityHandler = nil
-        _ = restOut
-        if let tail = try? outPipe.fileHandleForReading.readToEnd(), !tail.isEmpty {
-            appendStdout(tail)
-        }
-        if let tail = try? errPipe.fileHandleForReading.readToEnd(), !tail.isEmpty {
-            appendStderr(tail)
-        }
-
         guard let cont else { return }
         if let error {
             cont.resume(throwing: error)
         } else {
+            process.waitUntilExit()   // ensure terminationStatus is reaped
             lock.lock()
             let out = stdout
             let err = String(decoding: stderr, as: UTF8.self)
