@@ -138,9 +138,10 @@ struct FlatGraphView: View {
             let clusters = scene.clusters(grouping: grouping)
             let colors = GraphPalette.colors(nodes: scene.nodes, clusters: clusters)
             let focus = focusSet
+            let byID = Dictionary(uniqueKeysWithValues: scene.nodes.map { ($0.id, $0) })
             drawGroupRegions(context: context, transform: transform,
                              clusters: clusters, colors: colors, focus: focus)
-            drawEdges(context: context, transform: transform, focus: focus)
+            drawEdges(context: context, transform: transform, focus: focus, byID: byID)
             drawNodes(context: context, in: size, transform: transform,
                       clusters: clusters, colors: colors, focus: focus)
         }
@@ -148,7 +149,7 @@ struct FlatGraphView: View {
     }
 
     private func drawEdges(context: GraphicsContext, transform: CGAffineTransform,
-                           focus: Set<String>?) {
+                           focus: Set<String>?, byID: [String: GraphSnapshot.Node]) {
         let testIDs = Set(scene.nodes.filter(GraphScene.isTest).map(\.id))
         let selected = store.selectedNode
         for edge in scene.edges {
@@ -160,28 +161,95 @@ struct FlatGraphView: View {
             let touchesSelection = edge.from == selected || edge.to == selected
             let inFocus = focus == nil
                 || (focus!.contains(edge.from) && focus!.contains(edge.to))
+            // A test→code link with a known run result glows in its
+            // outcome colour — green passing, red failing, amber mixed.
+            let testColor = testLinkColor(edge, byID: byID)
 
-            // Resolve the edge's colour + weight from its role.
-            let color: Color, width: CGFloat, arrow: Bool
+            let color: Color, width: CGFloat, arrow: Bool, glow: Bool
             if cyclesOnly && !isCyclic {
-                color = .secondary.opacity(0.04); width = 0.5; arrow = false
+                color = .secondary.opacity(0.04); width = 0.5; arrow = false; glow = false
+            } else if let testColor, focus == nil || inFocus {
+                color = testColor; width = 1.5; arrow = touchesSelection; glow = true
             } else if isCyclic {
-                color = .orange.opacity(inFocus ? 0.9 : 0.55); width = 2; arrow = touchesSelection
+                color = .orange.opacity(inFocus ? 0.9 : 0.55); width = 2
+                arrow = touchesSelection; glow = false
             } else if focus != nil && !inFocus {
-                color = .secondary.opacity(0.05); width = 0.5; arrow = false
+                color = .secondary.opacity(0.05); width = 0.5; arrow = false; glow = false
             } else if touchesSelection {
-                color = .accentColor.opacity(0.9); width = 2; arrow = true
+                color = .accentColor.opacity(0.9); width = 2; arrow = true; glow = false
             } else if testIDs.contains(edge.from) || testIDs.contains(edge.to) {
-                color = .blue.opacity(0.4); width = 1; arrow = false
+                color = .blue.opacity(0.4); width = 1; arrow = false; glow = false
             } else {
-                color = .secondary.opacity(focus == nil ? 0.25 : 0.4); width = 1; arrow = false
+                color = .secondary.opacity(focus == nil ? 0.25 : 0.4); width = 1
+                arrow = false; glow = false
             }
 
             var path = Path()
             path.move(to: from); path.addLine(to: to)
+            if glow {   // phosphor: a soft wide underlay + a bright core.
+                context.stroke(path, with: .color(color.opacity(0.3)), lineWidth: width + 3)
+            }
             context.stroke(path, with: .color(color), lineWidth: width)
             if arrow { drawArrowhead(context: context, from: from, to: to,
                                      radius: nodeRadius(id: edge.to), color: color) }
+        }
+    }
+
+    /// If this edge is a reference from test code to the code it
+    /// exercises and we know that test class's last outcome, the
+    /// phosphor colour for the link.
+    private func testLinkColor(_ edge: GraphSnapshot.Edge,
+                               byID: [String: GraphSnapshot.Node]) -> Color? {
+        guard edge.kind == "core:refersToSymbol",
+              let source = byID[edge.from], GraphScene.isTest(source),
+              let target = byID[edge.to], !GraphScene.isTest(target) else { return nil }
+        let testClass = source.label.split(separator: ".").first.map(String.init) ?? source.label
+        switch store.testResults[testClass] {
+        case .passed: return .green
+        case .failed: return .red
+        case .partial: return .yellow
+        case nil: return nil
+        }
+    }
+
+    private func coverageColor(_ fraction: Double) -> Color {
+        Color(hue: 0.33 * fraction, saturation: 0.85, brightness: 0.85)
+    }
+
+    /// Per-function coverage for a class-like node: its member
+    /// functions' fractions, or nil when the node isn't a type or its
+    /// file wasn't instrumented (fall back to a single-arc halo).
+    private func functionRing(for node: GraphSnapshot.Node) -> [Double]? {
+        guard node.kind.hasSuffix(":type") || node.kind.hasSuffix(":interface")
+                || node.kind.hasSuffix(":enumeration"),
+              let path = node.path, let index = store.currentIndex,
+              let coverage = activeCoverage, coverage.functionsByPath[path] != nil
+        else { return nil }
+        let functions = (index.outgoing[node.id] ?? [])
+            .filter { $0.kind == "core:declares" }
+            .compactMap { index.byID[$0.to] }
+            .filter { $0.kind.hasSuffix(":function") }
+        guard !functions.isEmpty else { return nil }
+        return functions
+            .sorted { ($0.line ?? 0) < ($1.line ?? 0) }
+            .map { coverage.functionFraction(path: $0.path, line: $0.line) ?? 0 }
+    }
+
+    /// Draw the segmented function ring: equal arcs, one per function,
+    /// small gaps between, each coloured by its own coverage.
+    private func drawFunctionRing(context: GraphicsContext, center: CGPoint,
+                                  radius: CGFloat, fractions: [Double]) {
+        let n = fractions.count
+        let gap = min(6.0, 120.0 / Double(n))     // degrees; shrink as count grows
+        let span = 360.0 / Double(n)
+        for (i, fraction) in fractions.enumerated() {
+            let start = -90.0 + Double(i) * span + gap / 2
+            let end = -90.0 + Double(i + 1) * span - gap / 2
+            var arc = Path()
+            arc.addArc(center: center, radius: radius,
+                       startAngle: .degrees(start), endAngle: .degrees(end), clockwise: false)
+            context.stroke(arc, with: .color(coverageColor(fraction)),
+                           style: StrokeStyle(lineWidth: 3, lineCap: .butt))
         }
     }
 
@@ -220,15 +288,20 @@ struct FlatGraphView: View {
             context.fill(Path(ellipseIn: rect),
                          with: .color(fill.opacity(dimmed ? 0.2 : 1)))
 
-            if coverageMode, !dimmed,
-               let fraction = activeCoverage?.fraction(forPath: node.path) {
-                let halo = Path()
-                var arc = halo
-                arc.addArc(center: point, radius: radius + 4.5, startAngle: .degrees(-90),
-                           endAngle: .degrees(-90 + 360 * fraction), clockwise: false)
-                context.stroke(arc, with: .color(Color(hue: 0.33 * fraction, saturation: 0.85,
-                                                        brightness: 0.85)),
-                               style: StrokeStyle(lineWidth: 3, lineCap: .round))
+            if coverageMode, !dimmed {
+                if let ring = functionRing(for: node) {
+                    // Per-function coverage: one ring segment per method
+                    // of the class, each red→green by its own coverage —
+                    // the class's coverage broken out, function by function.
+                    drawFunctionRing(context: context, center: point,
+                                     radius: radius + 4.5, fractions: ring)
+                } else if let fraction = activeCoverage?.fraction(forPath: node.path) {
+                    var arc = Path()
+                    arc.addArc(center: point, radius: radius + 4.5, startAngle: .degrees(-90),
+                               endAngle: .degrees(-90 + 360 * fraction), clockwise: false)
+                    context.stroke(arc, with: .color(coverageColor(fraction)),
+                                   style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                }
             }
             if isSelected {
                 context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),

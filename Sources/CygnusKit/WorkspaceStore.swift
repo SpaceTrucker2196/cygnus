@@ -68,6 +68,9 @@ public final class WorkspaceStore {
     /// artifact while a run is active.
     public private(set) var liveCoverage: CoverageReport?
     public private(set) var coverageRun: CoverageRunProgress?
+    /// Test class → its last run outcome. Colors the test→code links
+    /// (green pass, red fail, yellow partial).
+    public private(set) var testResults: [String: TestOutcome] = [:]
     private var coverageRunTask: Task<Void, Never>?
 
     public struct CoverageRunProgress: Equatable, Sendable {
@@ -110,6 +113,7 @@ public final class WorkspaceStore {
                 else { continue }
                 accumulated = accumulated.merged(with: attributed.report)
                 self.liveCoverage = accumulated
+                self.testResults[testClass] = attributed.outcome
             }
             self?.coverageRun = CoverageRunProgress(
                 done: ordered.count, total: ordered.count, current: "done")
@@ -136,8 +140,10 @@ public final class WorkspaceStore {
             defer { self?.attributingTest = nil }
             guard let self else { return }
             do {
-                self.attributedCoverage = try await self.attributeCoverage(
+                let attributed = try await self.attributeCoverage(
                     testClass: testClass, for: repo)
+                self.attributedCoverage = attributed
+                self.testResults[testClass] = attributed.outcome
             } catch {
                 self.attributedCoverage = nil
             }
