@@ -103,6 +103,8 @@ surface it. Start billable sessions **inside this repo**, not
 `~/projects` (ledger.py can't attribute sessions launched from the
 workspace root).
 
+Energy (optional, read-only): `~/.claude/billing/ledger.py --energy-total` estimates the rough datacenter kWh behind the whole ledger; `--energy` adds a per-row estimate. Order-of-magnitude only.
+
 ## User context
 
 User: Jeff Kunzelman (`SpaceTrucker2196` on GitHub). river.io LLC.
