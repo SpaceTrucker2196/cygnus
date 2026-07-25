@@ -82,6 +82,9 @@ extension RelationshipKind {
     public static let declares = RelationshipKind("core:declares")
     public static let imports = RelationshipKind("core:imports")
     public static let dependsOn = RelationshipKind("core:dependsOn")
+    /// File → file: a symbol defined in the target is referenced from
+    /// the source (compiler-resolved, index-store enrichment).
+    public static let references = RelationshipKind("core:references")
     public static let inherits = RelationshipKind("core:inherits")
     public static let conformsTo = RelationshipKind("core:conformsTo")
 }

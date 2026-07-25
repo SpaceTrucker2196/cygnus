@@ -6,6 +6,7 @@ import CygnusObservation
 import CygnusDerive
 import CygnusExtractorSwift
 import CygnusExtractorTS
+import CygnusExtractorIndex
 
 // The engine facade. A workspace owns one graph database, one CAS,
 // and the extractor registry; the app-side CygnusKit and the CLI
@@ -275,6 +276,20 @@ public actor CygnusWorkspace {
                 derived, note: "derive \(repo.displayName): import rollups")
         }
 
+        // Index-store enrichment: compiler-resolved reference edges,
+        // when a build has produced an index store. Best-effort by
+        // contract — enrichment can never fail the index, but its
+        // failures are reported, never swallowed.
+        do {
+            if let enriched = try await enrichReferences(
+                repoID: repoID, root: root, snapshot: snapshot,
+                currentPaths: Set(manifest.files.map(\.path)), progress: progress) {
+                finalRevision = enriched
+            }
+        } catch {
+            FileHandle.standardError.write(Data("enrichment skipped: \(error)\n".utf8))
+        }
+
         return IndexResult(
             repository: repoID, revision: finalRevision, snapshot: snapshot,
             filesAnalyzed: manifest.files.count,
@@ -282,6 +297,102 @@ public actor CygnusWorkspace {
             filesRenamed: diff.renames.count,
             entityCount: changes.entities.count,
             relationshipCount: changes.relationships.count)
+    }
+
+    /// Reference enrichment: read the repo's compiled index store,
+    /// record one `.reference` observation per cross-file reference,
+    /// and assert derived file→file `core:references` edges with
+    /// per-pair counts and provenance to those observations. Returns
+    /// the committed revision, or nil when there was no store or
+    /// nothing to change.
+    private func enrichReferences(
+        repoID: RepositoryID, root: URL, snapshot: SnapshotID,
+        currentPaths: Set<String>,
+        progress: (@Sendable (IndexProgress) -> Void)?) async throws -> RevisionID? {
+        guard let storePath = IndexStoreReader.storePath(under: root) else { return nil }
+        progress?(IndexProgress(phase: "enrich", completed: 0, total: 1))
+        let reader = try IndexStoreReader(
+            storePath: storePath,
+            databasePath: directory.appendingPathComponent("isdb-cache").path)
+        // Index stores keep units for deleted files — an old build's
+        // ghosts. Only references between files in the CURRENT
+        // snapshot are evidence about it.
+        let references = await reader.fileReferences(repoRoot: root).filter {
+            currentPaths.contains($0.fromPath) && currentPaths.contains($0.toPath)
+        }
+        guard !references.isEmpty else { return nil }
+
+        // One literal observation per reference occurrence.
+        let observations = references.map { ref in
+            Observation(
+                kind: .reference,
+                file: SourceAnchor(
+                    path: ref.fromPath, blob: BlobHash(""),
+                    range: SourceRange(startLine: ref.line, startColumn: ref.column,
+                                       endLine: ref.line, endColumn: ref.column)),
+                payload: [
+                    "core:symbolUSR": .string(ref.symbolUSR),
+                    "core:symbolName": .string(ref.symbolName),
+                    "core:definedIn": .string(ref.toPath),
+                ],
+                extractor: ExtractorIdentity(name: "indexstore-db", version: "0.1.0"))
+        }
+        let ids = try store.recordObservations(observations, snapshot: snapshot)
+
+        // Aggregate per file pair; cap provenance per edge so a hot
+        // pair (thousands of references) doesn't explode the table.
+        struct Pair { var count = 0; var supportedBy: [ObservationID] = [] }
+        var pairs: [String: Pair] = [:]
+        var pairKeys: [String: (from: String, to: String)] = [:]
+        for (index, ref) in references.enumerated() {
+            let key = "\(ref.fromPath)→\(ref.toPath)"
+            var pair = pairs[key] ?? Pair()
+            pair.count += 1
+            if pair.supportedBy.count < 200 { pair.supportedBy.append(ids[index]) }
+            pairs[key] = pair
+            pairKeys[key] = (ref.fromPath, ref.toPath)
+        }
+
+        var changes = RevisionChanges()
+        var asserted = Set<String>()
+        for (key, pair) in pairs.sorted(by: { $0.key < $1.key }) {
+            guard let (from, to) = pairKeys[key] else { continue }
+            changes.relationships.append(RelationshipAssertion(
+                source: StableKeys.file(repoID, from),
+                target: StableKeys.file(repoID, to),
+                kind: .references, layer: .derived,
+                properties: ["core:referenceCount": .int(Int64(pair.count))],
+                supportedBy: pair.supportedBy))
+            asserted.insert("\(key)#\(pair.count)")
+        }
+
+        // Retract stale reference edges (identity includes the count,
+        // matching the rollup deriver's convention).
+        for edge in try store.relationships(kind: .references, at: .current)
+        where edge.layer == .derived {
+            let endpoints = try store.entities(ids: [edge.source, edge.target], at: .current)
+            guard let source = endpoints.first(where: { $0.entity.id == edge.source })?.entity,
+                  let target = endpoints.first(where: { $0.entity.id == edge.target })?.entity,
+                  source.repository == repoID
+            else { continue }
+            let count: Int64? = if case .int(let value)? = edge.properties["core:referenceCount"] {
+                value
+            } else { nil }
+            let identity = "\(pathOf(source.stableKey, repo: repoID))→\(pathOf(target.stableKey, repo: repoID))#\(count.map(String.init) ?? "?")"
+            if !asserted.contains(identity) {
+                changes.retractRelationships.append(edge.id)
+            }
+        }
+
+        guard !changes.relationships.isEmpty || !changes.retractRelationships.isEmpty
+        else { return nil }
+        return try store.commit(changes, note: "enrich: \(pairs.count) reference edges")
+    }
+
+    /// Strip a file stable key back to its repo-relative path.
+    private func pathOf(_ key: StableKey, repo: RepositoryID) -> String {
+        let prefix = "phys:file:\(repo.raw)/"
+        return key.raw.hasPrefix(prefix) ? String(key.raw.dropFirst(prefix.count)) : key.raw
     }
 }
 

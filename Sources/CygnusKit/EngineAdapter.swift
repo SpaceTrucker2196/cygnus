@@ -97,7 +97,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
     /// workspace stores many repos; a snapshot never mixes them.
     static func snapshot(from store: SQLiteGraphStore,
                          repository: RepositoryID) throws -> GraphSnapshot {
-        let kinds: [RelationshipKind] = [.containsPhysical, .declares, .imports]
+        let kinds: [RelationshipKind] = [.containsPhysical, .declares, .imports, .references]
         var entityIDs = Set<EntityID>()
         var rawEdges: [Relationship] = []
         for kind in kinds {
