@@ -61,7 +61,8 @@ struct FlatGraphView: View {
                 .simultaneousGesture(magnifyGesture)
                 .onTapGesture { location in select(at: location, in: geometry.size) }
                 .onTapGesture(count: 2) {
-                    withAnimation(.snappy) { zoom = 1; pan = .zero }
+                    store.selectedNode = nil
+                    withAnimation(.smooth(duration: 0.5)) { zoom = 1; pan = .zero }
                 }
                 .onAppear { viewSize = geometry.size }
                 .onChange(of: geometry.size) { viewSize = $1 }
@@ -513,7 +514,9 @@ struct FlatGraphView: View {
         let desiredScale = 0.5 * min(viewSize.width, viewSize.height) / extent
         let newZoom = min(max(desiredScale / fit, 0.5), 6)
         let scale = fit * newZoom
-        withAnimation(.snappy(duration: 0.4)) {
+        // A smooth spring reads as a camera glide rather than a snap;
+        // Canvas re-renders each interpolated step of zoom/pan.
+        withAnimation(.smooth(duration: 0.55)) {
             zoom = newZoom
             pan = CGSize(width: scale * (bounds.midX - center.x),
                          height: scale * (bounds.midY - center.y))
