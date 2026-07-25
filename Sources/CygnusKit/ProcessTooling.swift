@@ -123,10 +123,25 @@ private final class ProcessRunner: @unchecked Sendable {
         }
 
         let tool = self.tool
-        timeoutTask = Task { [weak self] in
+        let watchdog = Task { [weak self] in
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             self?.complete(with: .timedOut(tool))
+        }
+        // Install under the lock: the termination handler can fire —
+        // and read `timeoutTask` in complete() — before this line runs
+        // for a fast-exiting child. The unlocked assignment here was a
+        // data race (caught by TSan in every session) whose torn
+        // reference corrupted the heap and crashed later in unrelated
+        // code. If completion already happened, the watchdog has no
+        // job — cancel it instead of installing it.
+        lock.lock()
+        if finished {
+            lock.unlock()
+            watchdog.cancel()
+        } else {
+            timeoutTask = watchdog
+            lock.unlock()
         }
     }
 
