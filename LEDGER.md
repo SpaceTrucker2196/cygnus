@@ -25,3 +25,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 3ebca65 | 2026-07-25T01:04:32Z | claude-fable-5 | 7809 | 30833 | 14955834 | 36763 | 17.3108 | IndexStoreDB paper spike + concurrent-analysis sanitizer reproduction harness |
 | ab46ba3 | 2026-07-25T03:52:33Z | claude-fable-5 | 1315 | 44333 | 18028698 | 1407598 | 48.4105 | Coverage halo mode: llvm-cov artifact provider + per-node halo rendering |
 | d8c5e8b | 2026-07-25T04:10:23Z | claude-fable-5 | 24 | 9767 | 5840954 | 8418 | 6.4979 | Coverage halos default-on; make test writes coverage artifacts |
+| 9fd687f | 2026-07-25T04:14:52Z | claude-fable-5 | 995 | 22677 | 6900379 | 23530 | 8.5148 | Fastlane detail card: lanes/Appfile/CI-invocation scan + dashboard view |
