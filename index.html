@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cygnus // codebase as a knowledge graph</title>
+<meta name="description" content="cygnus — a native macOS app that models a software system as a knowledge graph from repository evidence and renders it as a 2D pattern visualizer: cycles, coverage, callers, roles." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0d0d12; --bg2:#111118; --panel:#16161f; --panel2:#1c1c28;
+    --line:#26263a; --line2:#33334d;
+    --ink:#e8e8f0; --dim:#9a9ab8; --faint:#63637f;
+    /* JetBrains-ish neon gradient stops */
+    --pink:#ff318c; --violet:#7c4dff; --cyan:#00e5ff; --blue:#4d7cff;
+    /* syntax */
+    --kw:#ff5c8a; --str:#7ee787; --fn:#ffc66d; --type:#5ccfe6; --num:#c792ea;
+    --com:#5a5a78; --op:#ff9d5c; --var:#c7c7e2;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:"Fira Code",ui-monospace,"SF Mono",Menlo,monospace;
+    font-feature-settings:"calt" 1;font-variant-ligatures:contextual;
+    -webkit-font-smoothing:antialiased;font-size:15px;line-height:1.65;overflow-x:hidden;
+  }
+  a{color:var(--cyan);text-decoration:none}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  .grad{background:linear-gradient(100deg,var(--pink),var(--violet) 48%,var(--cyan));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .com{color:var(--com)} .kw{color:var(--kw)} .str{color:var(--str)} .fn{color:var(--fn)}
+  .type{color:var(--type)} .num{color:var(--num)} .op{color:var(--op)} .var{color:var(--var)}
+
+  /* Top IDE bar */
+  .bar{position:sticky;top:0;z-index:20;background:rgba(13,13,18,.86);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .bar .wrap{display:flex;align-items:center;gap:16px;height:52px}
+  .dots{display:flex;gap:7px}
+  .dots i{width:12px;height:12px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}
+  .dots i:nth-child(3){background:#28c840}
+  .tab{font-size:13px;color:var(--dim);padding:5px 12px;border-radius:7px;
+    border:1px solid var(--line);background:var(--panel)}
+  .tab .grad{font-weight:700}
+  .bar .sp{flex:1}
+  .bar a.gh{font-size:13px;color:var(--ink);border:1px solid var(--line2);
+    padding:7px 14px;border-radius:8px;font-weight:600;transition:.2s}
+  .bar a.gh:hover{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet)}
+
+  /* Hero */
+  header{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
+  .mesh{position:absolute;inset:0;z-index:0;opacity:.5;
+    background:
+      radial-gradient(60% 50% at 15% 0%,rgba(255,49,140,.18),transparent 70%),
+      radial-gradient(50% 60% at 90% 20%,rgba(0,229,255,.16),transparent 70%),
+      radial-gradient(60% 60% at 60% 100%,rgba(124,77,255,.16),transparent 70%);}
+  .grid-bg{position:absolute;inset:0;z-index:0;opacity:.35;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),
+      linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(70% 70% at 50% 30%,#000,transparent)}
+  .hero{position:relative;z-index:1;padding:88px 0 70px}
+  .tagcom{color:var(--com);font-size:15px}
+  h1{font-size:clamp(34px,6vw,64px);line-height:1.05;margin:14px 0 0;letter-spacing:-.02em;
+    font-weight:700}
+  .cursor{display:inline-block;width:.6ch;height:1em;background:var(--cyan);
+    transform:translateY(.12em);animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .lede{font-size:clamp(15px,2vw,19px);color:var(--dim);max-width:660px;margin:24px 0 0}
+  .lede .op{font-weight:600}
+  .cta{margin-top:34px;display:flex;gap:14px;flex-wrap:wrap}
+  .btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:10px;
+    font-weight:600;font-size:14px;border:1px solid var(--line2);transition:.2s;font-family:inherit}
+  .btn.primary{background:linear-gradient(100deg,var(--pink),var(--violet));color:#fff;
+    border-color:transparent;box-shadow:0 8px 30px -8px rgba(124,77,255,.6)}
+  .btn.primary:hover{transform:translateY(-2px);filter:brightness(1.08)}
+  .btn.ghost{color:var(--ink);background:var(--panel)}
+  .btn.ghost:hover{border-color:var(--cyan)}
+
+  /* Editor / terminal window */
+  .win{margin-top:46px;background:var(--panel);border:1px solid var(--line2);border-radius:14px;
+    overflow:hidden;box-shadow:0 30px 80px -30px rgba(0,0,0,.8)}
+  .win .head{display:flex;align-items:center;gap:12px;padding:12px 16px;
+    border-bottom:1px solid var(--line);background:var(--bg2)}
+  .win .head .name{font-size:13px;color:var(--dim)}
+  .code{display:grid;grid-template-columns:auto 1fr;font-size:13.5px}
+  .code .gutter{padding:18px 14px 18px 18px;text-align:right;color:var(--faint);
+    user-select:none;border-right:1px solid var(--line);background:rgba(0,0,0,.15);
+    white-space:pre;line-height:1.75}
+  .code pre{margin:0;padding:18px 20px;overflow-x:auto;line-height:1.75;white-space:pre}
+
+  /* Sections */
+  section{padding:80px 0;border-bottom:1px solid var(--line);position:relative}
+  .kick{color:var(--fn);font-size:13px;font-weight:600}
+  .kick::before{content:"// ";color:var(--com)}
+  h2{font-size:clamp(24px,3.6vw,36px);letter-spacing:-.02em;margin:10px 0 0;font-weight:700}
+  .sub{color:var(--dim);max-width:700px;margin:14px 0 0;font-size:16px}
+
+  .grid{display:grid;gap:16px;margin-top:40px}
+  .g3{grid-template-columns:repeat(3,1fr)} .g2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:840px){.g3,.g2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px;
+    transition:.2s;position:relative}
+  .card:hover{border-color:var(--line2);transform:translateY(-2px)}
+  .card .tagn{font-size:12px;color:var(--faint)}
+  .card h3{margin:6px 0 8px;font-size:17px;font-weight:600}
+  .card h3 .op{color:var(--op)}
+  .card p{margin:0;color:var(--dim);font-size:14px}
+
+  /* Legend as annotated config */
+  .legend{margin-top:38px;background:var(--panel);border:1px solid var(--line2);border-radius:12px;
+    overflow:hidden}
+  .legend .h{padding:11px 18px;border-bottom:1px solid var(--line);background:var(--bg2);
+    color:var(--dim);font-size:13px}
+  .legend .row{display:grid;grid-template-columns:210px 1fr;gap:14px;padding:13px 18px;
+    border-top:1px solid var(--line);align-items:center}
+  .legend .row:first-of-type{border-top:none}
+  .legend .chan{display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px}
+  .legend .row p{margin:0;color:var(--dim);font-size:14px}
+  .sw{width:15px;height:15px;border-radius:50%;flex:none}
+  @media(max-width:640px){.legend .row{grid-template-columns:1fr;gap:5px}}
+
+  .langs{display:flex;gap:12px;flex-wrap:wrap;margin-top:34px}
+  .lang{display:inline-flex;align-items:center;gap:9px;padding:10px 16px;border-radius:9px;
+    background:var(--panel);border:1px solid var(--line);font-weight:600;font-size:14px}
+  .lang .d{width:9px;height:9px;border-radius:50%}
+
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center}
+  @media(max-width:840px){.split{grid-template-columns:1fr}}
+  ul.check{list-style:none;padding:0;margin:24px 0 0}
+  ul.check li{padding:8px 0 8px 26px;position:relative;color:var(--dim);font-size:14.5px}
+  ul.check li b{color:var(--ink);font-weight:600}
+  ul.check li::before{content:"->";position:absolute;left:0;top:8px;color:var(--op);font-weight:700}
+
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:40px}
+  @media(max-width:640px){.stat{grid-template-columns:repeat(2,1fr)}}
+  .stat .b{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px}
+  .stat .n{font-size:28px;font-weight:700;letter-spacing:-.01em}
+  .stat .l{color:var(--faint);font-size:13px;margin-top:3px}
+
+  footer{padding:52px 0;color:var(--faint);font-size:13.5px}
+  footer .prompt{color:var(--str)}
+  footer .wrap{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+  .pill{font-size:12px;color:var(--dim);border:1px solid var(--line);border-radius:7px;padding:4px 10px}
+</style>
+</head>
+<body>
+<div class="bar"><div class="wrap">
+  <div class="dots"><i></i><i></i><i></i></div>
+  <span class="tab"><span class="grad">cygnus</span> · river.io</span>
+  <span class="sp"></span>
+  <a class="gh" href="https://github.com/SpaceTrucker2196/cygnus">★ GitHub</a>
+</div></div>
+
+<header>
+  <div class="mesh"></div><div class="grid-bg"></div>
+  <div class="wrap hero">
+    <div class="tagcom">/* model the system, not the files */</div>
+    <h1>Your codebase<br/>as a <span class="grad">knowledge graph</span><span class="cursor"></span></h1>
+    <p class="lede">A native macOS app that extracts <span class="op">literal facts</span> from
+      repository evidence into an append-only graph — then renders it as a 2D pattern
+      visualizer. Cycles, coverage, callers, and architectural roles, in one view.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/SpaceTrucker2196/cygnus">clone &amp; build →</a>
+      <a class="btn ghost" href="#visualizer">./explore --visualizer</a>
+    </div>
+
+    <div class="win">
+      <div class="head"><div class="dots"><i></i><i></i><i></i></div>
+        <span class="name">~/projects/your-repo — cygnus analyze</span></div>
+      <div class="code">
+        <div class="gutter">1
+2
+3
+4
+5
+6
+7</div>
+<pre><span class="com">// observations → graph → projection</span>
+<span class="kw">let</span> <span class="var">graph</span> <span class="op">=</span> <span class="fn">analyze</span>(<span class="str">"~/projects/your-repo"</span>)
+<span class="var">graph</span>.<span class="fn">cycles</span>()        <span class="com">// -> 3 dependency cycles (amber)</span>
+<span class="var">graph</span>.<span class="fn">coverage</span>()      <span class="com">// -> per-function rings, live</span>
+<span class="var">graph</span>.<span class="fn">callers</span>(<span class="type">of</span>: <span class="str">"AuthService"</span>)   <span class="com">// -> who calls whom</span>
+<span class="var">graph</span>.<span class="fn">role</span>(<span class="str">"WorkspaceStore"</span>)  <span class="op">==</span> <span class="type">.Hub</span>   <span class="com">// inferred</span>
+<span class="com">// evidence, with provenance. never a guess.</span></pre>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="what">
+  <div class="wrap">
+    <div class="kick">what it is</div>
+    <h2>Evidence, not guesses.</h2>
+    <p class="sub">Repositories are raw evidence. Cygnus emits atomic, literal
+      observations — <span class="str">"file A imports module B"</span> — into an
+      append-only knowledge graph with full provenance. Every view is a disposable
+      projection of that graph, never a second model.</p>
+    <div class="grid g3">
+      <div class="card"><div class="tagn">engine/</div>
+        <h3><span class="op">struct</span> KnowledgeGraph</h3>
+        <p>Interval-versioned store, immutable revisions, provenance links — derived
+          facts die with the observations that support them.</p></div>
+      <div class="card"><div class="tagn">extractors/</div>
+        <h3><span class="op">enum</span> Language</h3>
+        <p>Swift, Python, C, Rust — source-level, no build required, error-tolerant on
+          checkouts that don't even compile.</p></div>
+      <div class="card"><div class="tagn">enrich/</div>
+        <h3><span class="op">func</span> resolve()</h3>
+        <p>Real reference &amp; caller edges from the compiler's index store — the
+          architecture as the compiler sees it, not directory guesses.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="visualizer">
+  <div class="wrap">
+    <div class="kick">the 2D pattern visualizer</div>
+    <h2>Every channel carries signal.</h2>
+    <p class="sub">A dense, evidence-backed picture that reads at a glance — the first
+      architecture smells jump out, and one click drills to the blast radius.</p>
+    <div class="legend">
+      <div class="h">// visual grammar</div>
+      <div class="row"><div class="chan"><span class="sw" style="background:linear-gradient(120deg,var(--blue),var(--violet))"></span>node color &amp; size</div><p>Group or inferred role; size scales with connections — hubs are large.</p></div>
+      <div class="row"><div class="chan"><span class="sw" style="background:#ffb84d"></span>amber edges</div><p>Dependency cycles — the first smell — found with strongly-connected-component analysis.</p></div>
+      <div class="row"><div class="chan"><span class="sw" style="background:conic-gradient(#ff5d6c,#ffe066,#7ee787)"></span>coverage rings</div><p>Per-function test coverage as a segmented ring, red → green — filled live as the suite runs.</p></div>
+      <div class="row"><div class="chan"><span class="sw" style="background:#7ee787"></span>test links</div><p>Test → code links colored by the test's own pass / partial / fail verdict.</p></div>
+      <div class="row"><div class="chan"><span class="sw" style="background:var(--cyan)"></span>focus &amp; flow</div><p>Click a node → zoom its blast radius; dependencies &amp; dependents light with direction arrows, the rest dims.</p></div>
+    </div>
+    <div class="grid g3" style="margin-top:20px">
+      <div class="card"><h3>grouping<span class="op">[]</span></h3><p>Area · Folder · Layer · Pattern (MVVM/MVC) · Role — Core / Hub / Entry / Leaf, inferred from the dependency flow.</p></div>
+      <div class="card"><h3>callers <span class="op">&amp;&amp;</span> symbols</h3><p>File dependencies, class-to-class caller graph, or the raw declaration reference graph — weighted by reference count.</p></div>
+      <div class="card"><h3>expand<span class="op">()</span></h3><p>Orbit a node's functions as coverage-colored satellites; read them in a side panel with jump-to-source &amp; syntax highlighting.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="coverage">
+  <div class="wrap split">
+    <div>
+      <div class="kick">test coverage, live</div>
+      <h2>Watch coverage fill in as tests run.</h2>
+      <ul class="check">
+        <li><b>Run the suite</b> from the graph — halos grow green, class by class.</li>
+        <li><b>Per-test attribution</b> — select a test, see exactly what it exercises.</li>
+        <li><b>Per-function rings</b> reveal which method is untested at a glance.</li>
+        <li><b>Pass / fail links</b> show a failing test and the precise code it touches.</li>
+      </ul>
+    </div>
+    <div class="win">
+      <div class="head"><div class="dots"><i></i><i></i><i></i></div><span class="name">coverage.graph</span></div>
+      <svg viewBox="0 0 360 260" width="100%" style="display:block;background:var(--bg2)" aria-hidden="true">
+        <g stroke="#26263a" stroke-width="1.4">
+          <line x1="180" y1="130" x2="90" y2="66"/><line x1="180" y1="130" x2="288" y2="80"/>
+          <line x1="180" y1="130" x2="118" y2="212"/><line x1="180" y1="130" x2="272" y2="200"/>
+        </g>
+        <line x1="90" y1="66" x2="180" y2="130" stroke="#7ee787" stroke-width="2.6" opacity=".95"/>
+        <line x1="288" y1="80" x2="180" y2="130" stroke="#ff5d6c" stroke-width="2.6" opacity=".9"/>
+        <circle cx="180" cy="130" r="19" fill="#4d7cff"/>
+        <g fill="none" stroke-width="4">
+          <path d="M180 104 A26 26 0 0 1 204 118" stroke="#7ee787"/>
+          <path d="M206 122 A26 26 0 0 1 204 146" stroke="#7ee787"/>
+          <path d="M202 150 A26 26 0 0 1 172 155" stroke="#ffe066"/>
+          <path d="M168 154 A26 26 0 0 1 155 132" stroke="#ff5d6c"/>
+          <path d="M155 128 A26 26 0 0 1 178 104" stroke="#7ee787"/>
+        </g>
+        <circle cx="90" cy="66" r="9" fill="#7ee787"/><circle cx="288" cy="80" r="9" fill="#ff5d6c"/>
+        <circle cx="118" cy="212" r="7" fill="#00e5ff"/><circle cx="272" cy="200" r="7" fill="#7c4dff"/>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section id="factory">
+  <div class="wrap">
+    <div class="kick">dark-factory ops dashboard</div>
+    <h2>Run each repo as a software factory.</h2>
+    <p class="sub">Beyond the graph, every repository becomes an ops console —
+      production orders, CI status, token-cost ledger, converge throughput —
+      driven by your own <span class="str">git</span> and <span class="str">gh</span>.</p>
+    <div class="grid g2">
+      <div class="card"><h3>production_orders<span class="op">[]</span></h3><p>Create, comment on, close GitHub issues as work orders — launch a converge run straight from one.</p></div>
+      <div class="card"><h3>portfolio<span class="op">()</span></h3><p>All-repos overview with aggregate spend, plus fastlane screenshots and a live GitHub Pages preview per repo.</p></div>
+    </div>
+    <div class="langs">
+      <span class="lang"><span class="d" style="background:#ff8a3d"></span>Swift</span>
+      <span class="lang"><span class="d" style="background:#7ee787"></span>Python</span>
+      <span class="lang"><span class="d" style="background:#4d7cff"></span>C</span>
+      <span class="lang"><span class="d" style="background:#ffb84d"></span>Rust</span>
+    </div>
+  </div>
+</section>
+
+<section id="built">
+  <div class="wrap">
+    <div class="kick">built right</div>
+    <h2>Fast, native, and honest.</h2>
+    <p class="sub">Swift 6 strict concurrency end to end, a hard memory ceiling so a
+      pathological repo can't take the machine down, and a rendering pipeline that stays
+      fluid at real-repo scale.</p>
+    <div class="stat">
+      <div class="b"><div class="n type">4</div><div class="l">languages extracted</div></div>
+      <div class="b"><div class="n str">5 GB</div><div class="l">hard memory ceiling</div></div>
+      <div class="b"><div class="n num">100%</div><div class="l">facts with provenance</div></div>
+      <div class="b"><div class="n op">2D</div><div class="l">Metal-free, always-on</div></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div><span class="prompt">$</span> cygnus --version <span class="com">// © river.io LLC</span></div>
+    <span class="pill">built with Claude Code</span>
+  </div>
+</footer>
+</body>
+</html>
