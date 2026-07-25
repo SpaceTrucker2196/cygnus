@@ -48,11 +48,14 @@ public enum Resolver {
     /// Build assertions for a set of files (full snapshot or the
     /// changed subset). Directory and repository entities are always
     /// derived from the full manifest so physical containment stays
-    /// complete.
+    /// complete. `renamedFrom` (new path → old path) threads identity
+    /// across detected moves: the new file entity records where its
+    /// content evidently came from.
     public static func resolve(repository: RepositoryID,
                                displayName: String,
                                manifest: SnapshotManifest,
-                               files: [FileObservations]) -> RevisionChanges {
+                               files: [FileObservations],
+                               renamedFrom: [String: String] = [:]) -> RevisionChanges {
         var changes = RevisionChanges()
         var assertedKeys = Set<StableKey>()
 
@@ -86,6 +89,7 @@ public enum Resolver {
             let fileKey = StableKeys.file(repository, file.path)
             var props: PropertyBag = ["core:size": .int(file.size)]
             if let hint = file.languageHint { props["core:language"] = .string(hint) }
+            if let origin = renamedFrom[file.path] { props["core:renamedFrom"] = .string(origin) }
             assert(EntityAssertion(
                 stableKey: fileKey, kind: .file, repository: repository,
                 name: components.last ?? file.path, properties: props,

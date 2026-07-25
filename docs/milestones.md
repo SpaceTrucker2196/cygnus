@@ -26,8 +26,10 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       revision diff query, no-op-revision suppression *(2026-07-19)*;
       derived import rollups (`ImportRollupDeriver`: per-directory
       `core:dependsOn` module aggregates with counts + observation
-      provenance, run as its own revision inside `index`)
-      *(2026-07-24)*. Remaining: fuzzy renames, IndexStoreDB spike.
+      provenance, run as its own revision inside `index`); rename
+      detection (exact blob-match + fuzzy same-filename, one-to-one
+      unambiguous only; `core:renamedFrom` breadcrumb on the moved
+      entity) *(2026-07-24)*. Remaining: IndexStoreDB spike.
 
 ## Shell
 

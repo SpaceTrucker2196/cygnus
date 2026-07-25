@@ -44,6 +44,7 @@ public struct IndexResult: Sendable {
     public let snapshot: SnapshotID
     public let filesAnalyzed: Int
     public let filesChanged: Int
+    public let filesRenamed: Int
     public let entityCount: Int
     public let relationshipCount: Int
 }
@@ -125,7 +126,7 @@ public actor CygnusWorkspace {
            let (snapshotID, _) = try store.latestIndexedSnapshot(repository: repoID) {
             return IndexResult(
                 repository: repoID, revision: current, snapshot: snapshotID,
-                filesAnalyzed: manifest.files.count, filesChanged: 0,
+                filesAnalyzed: manifest.files.count, filesChanged: 0, filesRenamed: 0,
                 entityCount: 0, relationshipCount: 0)
         }
 
@@ -203,10 +204,13 @@ public actor CygnusWorkspace {
         }
 
         // Assertions for the changed subset (plus the full physical
-        // tree, whose unchanged assertions dedupe to no-ops).
+        // tree, whose unchanged assertions dedupe to no-ops). Detected
+        // renames thread identity: the new file entity records the
+        // path its content evidently moved from.
         var changes = Resolver.resolve(
             repository: repoID, displayName: repo.displayName,
-            manifest: manifest, files: fileObservations)
+            manifest: manifest, files: fileObservations,
+            renamedFrom: diff.renamedFrom)
 
         // Retract facts whose anchor files vanished or changed and
         // whose keys are not re-asserted by this revision.
@@ -253,9 +257,10 @@ public actor CygnusWorkspace {
         }
 
         progress?(IndexProgress(phase: "commit", completed: 0, total: 1))
+        let renameNote = diff.renames.isEmpty ? "" : " ↷\(diff.renames.count)"
         let revision = try store.commit(
             changes,
-            note: "index \(repo.displayName): +\(diff.added.count) ~\(diff.modified.count) -\(diff.removed.count)",
+            note: "index \(repo.displayName): +\(diff.added.count) ~\(diff.modified.count) -\(diff.removed.count)\(renameNote)",
             snapshot: snapshot)
 
         // Derive pass: bring the derived layer up to date from the
@@ -274,6 +279,7 @@ public actor CygnusWorkspace {
             repository: repoID, revision: finalRevision, snapshot: snapshot,
             filesAnalyzed: manifest.files.count,
             filesChanged: diff.changedOrAdded.count + diff.removed.count,
+            filesRenamed: diff.renames.count,
             entityCount: changes.entities.count,
             relationshipCount: changes.relationships.count)
     }
