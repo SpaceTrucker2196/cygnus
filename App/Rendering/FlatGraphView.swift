@@ -18,7 +18,10 @@ struct FlatGraphView: View {
     @State private var labelSize: Double = 11
     @State private var legendShown = true
     @State private var grouping: GraphScene.Grouping = .area
-    @State private var coverageMode = false
+    /// Coverage halos are on by default — coverage is part of the
+    /// picture, not an easter egg. Nodes without data simply have no
+    /// halo, so the default costs nothing on repos without artifacts.
+    @State private var coverageMode = true
     @State private var coverage: CoverageReport?
 
     /// Layout restarts when either the scene or the grouping changes;
@@ -56,7 +59,7 @@ struct FlatGraphView: View {
                             labelSize: $labelSize, legendShown: $legendShown,
                             grouping: $grouping, coverageMode: $coverageMode)
         }
-        .task(id: coverageMode) {
+        .task(id: "\(coverageMode)-\(store.selectedRepo?.uuidString ?? "")") {
             guard coverageMode, let repo = store.selectedRepo else { return }
             coverage = await store.loadCoverage(for: repo)
         }
