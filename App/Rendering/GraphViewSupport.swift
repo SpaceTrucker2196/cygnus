@@ -6,16 +6,24 @@ import CygnusKit
 
 enum GraphPalette {
     /// Distinct hues for project areas; assignment is stable within a
-    /// scene (sorted group names).
+    /// scene (sorted group names). Blue is reserved for tests and
+    /// never enters the rotation.
     static let hues: [Color] = [
-        .blue, .green, .orange, .pink, .teal, .yellow, .indigo,
+        .green, .orange, .pink, .teal, .yellow, .indigo,
         .mint, .red, .cyan, .brown,
     ]
 
+    /// Test clusters are blue in every grouping mode — the Layer/
+    /// Pattern "Tests" band and Area keys under a test umbrella.
+    static func isTestKey(_ key: String) -> Bool {
+        key == "Tests" || key.hasPrefix("Tests/") || key.hasPrefix("tests/")
+            || key.hasPrefix("test/") || key.hasPrefix("UITests")
+    }
+
     /// Colors keyed by the active grouping's cluster names. Semantic
-    /// groups get pinned colors (tests are always desaturated gray,
-    /// imported modules always purple — the convention of segregating
-    /// tests/externals visually); the rest take stable sorted hues.
+    /// groups get pinned colors (tests are always blue, imported
+    /// modules always purple — segregating tests/externals visually);
+    /// the rest take stable sorted hues.
     static func colors(for scene: GraphScene,
                        grouping: GraphScene.Grouping) -> [String: Color] {
         let keys = Set(scene.nodes.compactMap {
@@ -24,10 +32,11 @@ enum GraphPalette {
         var colors: [String: Color] = [:]
         var hueIndex = 0
         for key in keys.sorted() {
-            switch key {
-            case "modules", "Modules": colors[key] = .purple
-            case "Tests": colors[key] = .gray
-            default:
+            if key == "modules" || key == "Modules" {
+                colors[key] = .purple
+            } else if isTestKey(key) {
+                colors[key] = .blue
+            } else {
                 colors[key] = hues[hueIndex % hues.count]
                 hueIndex += 1
             }
