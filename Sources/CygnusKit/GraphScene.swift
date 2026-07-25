@@ -65,6 +65,78 @@ public struct GraphScene: Sendable, Equatable {
         return GraphScene(nodes: nodes, edges: refs)
     }
 
+    // MARK: - Pattern analysis
+
+    /// Edges that lie on a dependency cycle — the first architecture
+    /// smell a reviewer looks for. Computed via Tarjan's strongly-
+    /// connected components: an edge is cyclic when both endpoints
+    /// share an SCC of size > 1 (or it's a self-loop). Keyed
+    /// "from\u{1}to" so the renderer can test membership per edge.
+    public var cyclicEdges: Set<String> {
+        let component = stronglyConnectedComponents()
+        var sizes: [Int: Int] = [:]
+        for id in component.values { sizes[id, default: 0] += 1 }
+        var result = Set<String>()
+        for edge in edges {
+            guard let a = component[edge.from], let b = component[edge.to] else { continue }
+            if a == b, edge.from == edge.to || (sizes[a] ?? 0) > 1 {
+                result.insert("\(edge.from)\u{1}\(edge.to)")
+            }
+        }
+        return result
+    }
+
+    /// node id → SCC id. Iterative Tarjan (no recursion — deep graphs
+    /// must not blow the stack, the SnapshotIndex lesson).
+    public func stronglyConnectedComponents() -> [String: Int] {
+        var adjacency: [String: [String]] = [:]
+        for edge in edges where edge.from != edge.to {
+            adjacency[edge.from, default: []].append(edge.to)
+        }
+        var index = 0
+        var indices: [String: Int] = [:]
+        var lowlink: [String: Int] = [:]
+        var onStack = Set<String>()
+        var stack: [String] = []
+        var component: [String: Int] = [:]
+        var nextComponent = 0
+
+        for node in nodes.map(\.id) where indices[node] == nil {
+            // Explicit work stack of (node, nextNeighborIndex).
+            var work: [(String, Int)] = [(node, 0)]
+            while let (v, i) = work.last {
+                if i == 0 {
+                    indices[v] = index; lowlink[v] = index; index += 1
+                    stack.append(v); onStack.insert(v)
+                }
+                let neighbors = adjacency[v] ?? []
+                if i < neighbors.count {
+                    work[work.count - 1].1 += 1
+                    let w = neighbors[i]
+                    if indices[w] == nil {
+                        work.append((w, 0))
+                    } else if onStack.contains(w) {
+                        lowlink[v] = min(lowlink[v]!, indices[w]!)
+                    }
+                } else {
+                    if lowlink[v] == indices[v] {
+                        while true {
+                            let w = stack.removeLast(); onStack.remove(w)
+                            component[w] = nextComponent
+                            if w == v { break }
+                        }
+                        nextComponent += 1
+                    }
+                    work.removeLast()
+                    if let (parent, _) = work.last {
+                        lowlink[parent] = min(lowlink[parent]!, lowlink[v]!)
+                    }
+                }
+            }
+        }
+        return component
+    }
+
     /// Grouping key for color coding: the project area a file lives
     /// in ("Sources/CygnusKit", "App", "Tests"…). Modules group as
     /// "modules".
