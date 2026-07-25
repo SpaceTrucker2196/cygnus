@@ -51,6 +51,7 @@ public struct GitHubFactoryProvider: FactoryProvider {
         caps.hasWorkflows = directoryHasYAML(url.appendingPathComponent(".github/workflows"))
         caps.hasDocs = FactoryDocScan.hasAnyDoc(repoAt: url)
         caps.screenshots = Self.fastlaneScreenshots(repoAt: url)
+        caps.fastlane = FastlaneScan.scan(repoAt: url)
         caps.pagesURL = await detectPagesURL(repoAt: url, caps: caps)
         return caps
     }

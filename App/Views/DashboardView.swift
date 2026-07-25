@@ -24,6 +24,9 @@ struct DashboardView: View {
             .padding(16)
             // Full-width previews below the stat grid.
             VStack(alignment: .leading, spacing: 14) {
+                if let fastlane = state.caps.fastlane {
+                    FastlaneCard(info: fastlane)
+                }
                 if !state.caps.screenshots.isEmpty, let root = store.repoURL(repoID) {
                     ScreenshotsCard(repoRoot: root, screenshots: state.caps.screenshots)
                 }
