@@ -60,15 +60,27 @@ struct GraphLegendView: View {
     let scene: GraphScene
     var cycleCount: Int = 0
     let colors: [String: Color]
+    /// Bound to the graph's "exploded" group — clicking a legend row
+    /// centers that group and rings the rest around it.
+    @Binding var explodedGroup: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(colors.sorted(by: { $0.key < $1.key }), id: \.key) { group, color in
-                HStack(spacing: 6) {
-                    Circle().fill(color).frame(width: 9, height: 9)
-                    Text(group == "modules" ? "modules (imported targets)" : group)
-                        .font(.caption)
+                Button {
+                    explodedGroup = (explodedGroup == group) ? nil : group
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle().fill(color).frame(width: 9, height: 9)
+                        Text(group == "modules" ? "modules (imported targets)" : group)
+                            .font(.caption)
+                            .fontWeight(explodedGroup == group ? .bold : .regular)
+                        if explodedGroup == group {
+                            Image(systemName: "scope").font(.caption2).foregroundStyle(.tint)
+                        }
+                    }
                 }
+                .buttonStyle(.plain)
             }
             Divider().frame(width: 150)
             legendRow(symbol: circleSizes, "size = connections (hubs are big)")
