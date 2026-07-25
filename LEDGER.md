@@ -26,3 +26,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | ab46ba3 | 2026-07-25T03:52:33Z | claude-fable-5 | 1315 | 44333 | 18028698 | 1407598 | 48.4105 | Coverage halo mode: llvm-cov artifact provider + per-node halo rendering |
 | d8c5e8b | 2026-07-25T04:10:23Z | claude-fable-5 | 24 | 9767 | 5840954 | 8418 | 6.4979 | Coverage halos default-on; make test writes coverage artifacts |
 | 9fd687f | 2026-07-25T04:14:52Z | claude-fable-5 | 995 | 22677 | 6900379 | 23530 | 8.5148 | Fastlane detail card: lanes/Appfile/CI-invocation scan + dashboard view |
+| 206206d | 2026-07-25T04:22:36Z | claude-fable-5 | 431 | 16136 | 11081702 | 30043 | 12.4937 | Root-cause + fix app crashes: ProcessRunner timeout-task data race (TSan-caught) |
