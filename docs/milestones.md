@@ -48,11 +48,12 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       2026-07-24** — both 3D paths cost too much memory/time to
       render (PROGRESS.md). The `GraphRendererView` seam stays; 3D
       returns only behind it, gated by a real perf budget.
-- [~] **S6** — Polish. Done: needs-relink flow, Settings scene,
+- [x] **S6** — Polish. Needs-relink flow, Settings scene,
       constellation app icon *(2026-07-19)*; 5 GB memory governor +
       engine hard abort + live meter; Flat-view spatial grouping
-      (area/layer/pattern regions) *(2026-07-24)*. Remaining: manual
-      GUI sweep (human), first tagged build.
+      (area/layer/pattern regions); owner GUI sweep (blue tests
+      treatment, inspector code pane, workspace-cache crash fix);
+      **v0.1.0 tagged** *(2026-07-24)*.
 - [~] **S7** — Dark-factory ops dashboard *(landed unplanned,
       2026-07-24)*: sections (Dashboard/Workflow/Issues/Docs),
       capability detection, ledger/metrics/commits/runs cards,
