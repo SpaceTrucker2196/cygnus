@@ -99,9 +99,13 @@ public actor CygnusWorkspace {
 
         let provider = LocalFSProvider(root: root, contentStore: contentStore)
         // The walk ingests the whole working tree — it must honour the
-        // same hard limit as extraction or a huge repo OOMs before
-        // extraction even starts.
-        let manifest = try provider.snapshot(budget: { try limits.checkHardLimit() })
+        // same hard limit as extraction, and respond to cancellation
+        // (a cancelled analysis must stop working, not grind on as a
+        // zombie behind the actor).
+        let manifest = try provider.snapshot(budget: {
+            try Task.checkCancellation()
+            try limits.checkHardLimit()
+        })
         progress?(IndexProgress(phase: "snapshot", completed: 1, total: 1,
                                 manifest: manifest.files))
 
@@ -172,6 +176,7 @@ public actor CygnusWorkspace {
                 // Results accumulate for the whole run — the hard
                 // limit is the only bound on that growth. Throwing
                 // here cancels the group; nothing has been committed.
+                try Task.checkCancellation()
                 try limits.checkHardLimit()
                 progress?(IndexProgress(
                     phase: "extract", completed: completed, total: total,
