@@ -4,11 +4,25 @@ import CygnusKit
 @main
 struct CygnusApp: App {
     @State private var store = CygnusApp.makeStore()
+    /// App-wide text size. Index into `textSizes`; persisted. macOS
+    /// scales semantic-style text (.body/.caption/.headline…) from
+    /// `.dynamicTypeSize`; the graph's own labels have their own slider.
+    @AppStorage("textSizeIndex") private var textSizeIndex = 3
+
+    private static let textSizes: [DynamicTypeSize] = [
+        .xSmall, .small, .medium, .large, .xLarge, .xxLarge, .xxxLarge,
+        .accessibility1, .accessibility2, .accessibility3,
+    ]
+    private static let defaultTextSize = 3   // .large
+    private var textSize: DynamicTypeSize {
+        Self.textSizes[min(max(textSizeIndex, 0), Self.textSizes.count - 1)]
+    }
 
     var body: some Scene {
         WindowGroup {
             WorkspaceView()
                 .environment(store)
+                .dynamicTypeSize(textSize)
                 .task { CygnusApp.seedIfRequested(store) }
         }
         // Corrupted window-restoration state (e.g. after a force-
@@ -16,9 +30,30 @@ struct CygnusApp: App {
         // window: always present, never restore.
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.disabled)
+        .commands { textSizeCommands }
         Settings {
-            SettingsView()
+            SettingsView().dynamicTypeSize(textSize)
         }
+    }
+
+    /// View → Text Size menu. ⌘= / ⌘- / ⌘0, plus a ⌘⇧+ alias for the
+    /// habit of pressing shifted-plus (a Command-only shortcut won't
+    /// match a literal "+" key, which needs Shift).
+    private var textSizeCommands: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Bigger Text") { bumpTextSize(1) }
+                .keyboardShortcut("=", modifiers: .command)
+            Button("Bigger Text (+)") { bumpTextSize(1) }
+                .keyboardShortcut("+", modifiers: [.command, .shift])
+            Button("Smaller Text") { bumpTextSize(-1) }
+                .keyboardShortcut("-", modifiers: .command)
+            Button("Reset Text Size") { textSizeIndex = Self.defaultTextSize }
+                .keyboardShortcut("0", modifiers: .command)
+        }
+    }
+
+    private func bumpTextSize(_ delta: Int) {
+        textSizeIndex = min(max(textSizeIndex + delta, 0), Self.textSizes.count - 1)
     }
 
     /// Normal launches use the container defaults. UI-test launches
