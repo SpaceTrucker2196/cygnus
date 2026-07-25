@@ -43,3 +43,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 50f3c3f | 2026-07-25T18:09:13Z | claude-opus-4-8 | 1547 | 30245 | 16702819 | 32788 | 9.4431 | Fix Build Index: enrich on source no-op so symbols appear after a build; idempot |
 | 84e88a8 | 2026-07-25T18:14:39Z | claude-opus-4-8 | 1416 | 25948 | 17767434 | 24808 | 9.7876 | Callers class-graph mode, inspector functions panel, code syntax highlighting |
 | 9801388 | 2026-07-25T18:22:05Z | claude-opus-4-8 | 526 | 29610 | 22400560 | 35854 | 12.3017 | Select-to-focus zoom + focus-set/satellite labels; Folder grouping mode |
+| 2cac597 | 2026-07-25T18:33:40Z | claude-opus-4-8 | 1054 | 33555 | 25775097 | 31773 | 14.0494 | Legend explode: click a legend group to center it and ring others around it |
