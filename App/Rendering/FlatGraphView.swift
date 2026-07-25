@@ -188,12 +188,17 @@ struct FlatGraphView: View {
                 arrow = false; glow = false
             }
 
+            // Heavier reference edges draw thicker — log-scaled so an
+            // 80× edge is bold, not a slab. Structural edges (weight 1)
+            // are unaffected.
+            let weighted = width + min(CGFloat(log2(Double(max(edge.weight, 1)) + 1)) * 0.6, 4)
+
             var path = Path()
             path.move(to: from); path.addLine(to: to)
             if glow {   // phosphor: a soft wide underlay + a bright core.
-                context.stroke(path, with: .color(color.opacity(0.3)), lineWidth: width + 3)
+                context.stroke(path, with: .color(color.opacity(0.3)), lineWidth: weighted + 3)
             }
-            context.stroke(path, with: .color(color), lineWidth: width)
+            context.stroke(path, with: .color(color), lineWidth: weighted)
             if arrow { drawArrowhead(context: context, from: from, to: to,
                                      radius: nodeRadius(id: edge.to), color: color) }
         }
