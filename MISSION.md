@@ -63,3 +63,4 @@ crosses one of them is wrong even if it works.
 | GRDB.swift | SQLite store: migrations, Codable records, ValueObservation, WAL | 2026-07-19 — pure SPM, no transitive deps, MIT, local-only |
 | swift-syntax | Swift extractor (source-level, no build needed) | 2026-07-19 — Apple/swiftlang first-party |
 | SwiftTreeSitter + tree-sitter-python, tree-sitter-c | Python/C extractors, error-tolerant parsing | 2026-07-19 — pinned exact grammar versions; ABI churn is the known papercut |
+| indexstore-db | Reference/call-edge enrichment (optional provider; swift-syntax stays the baseline) | 2026-07-24 — swiftlang first-party, Apache-2.0; no semver, pinned by revision to the toolchain-matching swift-6.3.3-RELEASE tag; C++ core + libIndexStore dylib coupling is the known papercut (docs/spikes/indexstoredb.md) |

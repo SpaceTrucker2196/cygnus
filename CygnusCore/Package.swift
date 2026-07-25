@@ -24,6 +24,11 @@ let package = Package(
         // external scanner and breaking the link.
         .package(url: "https://github.com/tree-sitter/tree-sitter-python.git", exact: "0.23.6"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-c.git", exact: "0.24.2"),
+        // Reference/call-edge enrichment (audited MISSION.md §5,
+        // 2026-07-24). No semver upstream — pinned by revision to the
+        // swift-6.3.3-RELEASE tag, matching the installed toolchain.
+        .package(url: "https://github.com/swiftlang/indexstore-db.git",
+                 revision: "003ac41513ba291f10ff1a0147ae68588914668d"),
     ],
     targets: [
         // Pure model. Depends on nothing; everyone depends on it.
@@ -61,6 +66,17 @@ let package = Package(
         // Reads the graph, writes derived-layer facts only.
         .target(name: "CygnusDerive", dependencies: ["CygnusGraph"]),
 
+        // Optional reference/call-edge enrichment over a compiled
+        // index store. An extractor in spirit: emits observations,
+        // never touches the store; the whole target degrades to
+        // "unavailable" when a repo has no index.
+        .target(name: "CygnusExtractorIndex", dependencies: [
+            "CygnusGraph",
+            "CygnusObservation",
+            "CygnusProviders",
+            .product(name: "IndexStoreDB", package: "indexstore-db"),
+        ]),
+
         // Query surface: subgraph fetch, projections, search, diff.
         .target(name: "CygnusQuery", dependencies: ["CygnusGraph", "CygnusStore"]),
 
@@ -74,6 +90,7 @@ let package = Package(
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
         .testTarget(name: "DeriveTests", dependencies: ["CygnusDerive", "CygnusStore"]),
+        .testTarget(name: "ExtractorIndexTests", dependencies: ["CygnusExtractorIndex"]),
         .testTarget(name: "ExtractorSwiftTests", dependencies: ["CygnusExtractorSwift", "CygnusProviders"]),
         .testTarget(name: "EngineTests", dependencies: ["CygnusEngine", "CygnusQuery"]),
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
