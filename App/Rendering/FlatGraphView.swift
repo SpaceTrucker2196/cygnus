@@ -73,14 +73,22 @@ struct FlatGraphView: View {
             let transform = viewTransform(in: size)
             let colors = GraphPalette.colors(for: scene, grouping: grouping)
             drawGroupRegions(context: context, transform: transform, colors: colors)
+            // Edges touching a test node draw blue so test wiring is
+            // traceable at a glance; everything else stays muted.
+            let testIDs = Set(scene.nodes.filter(GraphScene.isTest).map(\.id))
             var edgePath = Path()
+            var testEdgePath = Path()
             for edge in scene.edges {
                 guard let from = frame.positions[edge.from],
                       let to = frame.positions[edge.to] else { continue }
-                edgePath.move(to: CGPoint(x: from.x, y: from.y).applying(transform))
-                edgePath.addLine(to: CGPoint(x: to.x, y: to.y).applying(transform))
+                let isTestEdge = testIDs.contains(edge.from) || testIDs.contains(edge.to)
+                var path = isTestEdge ? testEdgePath : edgePath
+                path.move(to: CGPoint(x: from.x, y: from.y).applying(transform))
+                path.addLine(to: CGPoint(x: to.x, y: to.y).applying(transform))
+                if isTestEdge { testEdgePath = path } else { edgePath = path }
             }
             context.stroke(edgePath, with: .color(.secondary.opacity(0.25)), lineWidth: 1)
+            context.stroke(testEdgePath, with: .color(.blue.opacity(0.45)), lineWidth: 1)
 
             let showLabels = labelMode == .on
                 || (labelMode == .auto
@@ -137,10 +145,13 @@ struct FlatGraphView: View {
             }
             path.closeSubpath()
             let color = colors[key] ?? .gray
+            // The tests cloud reads a touch stronger than ordinary
+            // regions — it's the band the eye should find first.
+            let opacity = GraphPalette.isTestKey(key) ? 0.16 : 0.10
             let style = StrokeStyle(lineWidth: padding * 2,
                                     lineCap: .round, lineJoin: .round)
-            context.stroke(path, with: .color(color.opacity(0.10)), style: style)
-            context.fill(path, with: .color(color.opacity(0.10)))
+            context.stroke(path, with: .color(color.opacity(opacity)), style: style)
+            context.fill(path, with: .color(color.opacity(opacity)))
             // Label above the region's topmost point.
             let top = hull.min(by: { $0.y < $1.y }) ?? first
             context.draw(
