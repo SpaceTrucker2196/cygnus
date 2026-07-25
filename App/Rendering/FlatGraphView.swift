@@ -29,6 +29,7 @@ struct FlatGraphView: View {
     @State private var expandFunctions = false
     @State private var coverage: CoverageReport?
     @State private var cyclicEdges: Set<String> = []
+    @State private var viewSize: CGSize = .zero
 
     private struct LayoutInput: Equatable {
         let scene: GraphScene
@@ -58,7 +59,10 @@ struct FlatGraphView: View {
                 .onTapGesture(count: 2) {
                     withAnimation(.snappy) { zoom = 1; pan = .zero }
                 }
+                .onAppear { viewSize = geometry.size }
+                .onChange(of: geometry.size) { viewSize = $1 }
         }
+        .onChange(of: store.selectedNode) { _, _ in focusOnSelection() }
         .task(id: LayoutInput(scene: scene, grouping: grouping)) {
             cyclicEdges = scene.cyclicEdges
             for await next in LayoutEngine(scene: scene, initial: frame.positions,
@@ -145,7 +149,9 @@ struct FlatGraphView: View {
             drawEdges(context: context, transform: transform, focus: focus, byID: byID)
             drawNodes(context: context, in: size, transform: transform,
                       clusters: clusters, colors: colors, focus: focus)
-            if expandFunctions {
+            // Satellites: all nodes when Expand is on; otherwise just
+            // the selected node's, so selecting expands its functions.
+            if expandFunctions || store.selectedNode != nil {
                 drawSatellites(context: context, in: size, transform: transform, focus: focus)
             }
         }
@@ -242,21 +248,28 @@ struct FlatGraphView: View {
     /// drawing and hit-testing so a click lands on the same dot the
     /// eye sees. Orbit radius grows a little with the parent so its
     /// own ring/label clears the satellites.
-    private func satellites(in size: CGSize) -> [(node: GraphSnapshot.Node,
-                                                  at: CGPoint, parent: CGPoint)] {
+    private func satellites(in size: CGSize) -> [(node: GraphSnapshot.Node, at: CGPoint,
+                                                  parent: CGPoint, parentSelected: Bool)] {
         let transform = viewTransform(in: size)
-        var result: [(GraphSnapshot.Node, CGPoint, CGPoint)] = []
-        for node in scene.nodes {
+        // When Expand is off, only the selected node expands.
+        let parents = expandFunctions ? scene.nodes
+            : scene.nodes.filter { $0.id == store.selectedNode }
+        var result: [(GraphSnapshot.Node, CGPoint, CGPoint, Bool)] = []
+        for node in parents {
             guard let position = frame.positions[node.id] else { continue }
             let functions = memberFunctions(of: node.id)
             guard !functions.isEmpty else { continue }
             let center = CGPoint(x: position.x, y: position.y).applying(transform)
-            let orbit = nodeRadius(node) + 16 + min(CGFloat(functions.count), 8)
+            // The selected node's ring is roomier so its labels don't
+            // collide; more functions push the radius out further.
+            let selected = node.id == store.selectedNode
+            let base: CGFloat = selected ? 34 : 16
+            let orbit = nodeRadius(node) + base + CGFloat(functions.count) * (selected ? 3 : 1)
             for (i, function) in functions.enumerated() {
                 let angle = 2 * .pi * Double(i) / Double(functions.count) - .pi / 2
                 let at = CGPoint(x: center.x + orbit * cos(angle),
                                  y: center.y + orbit * sin(angle))
-                result.append((function, at, center))
+                result.append((function, at, center, selected))
             }
         }
         return result
@@ -265,7 +278,7 @@ struct FlatGraphView: View {
     private func drawSatellites(context: GraphicsContext, in size: CGSize,
                                 transform: CGAffineTransform, focus: Set<String>?) {
         let showLabels = labelMode != .off && currentScale(in: size) > 1.2
-        for (function, at, parent) in satellites(in: size) {
+        for (function, at, parent, parentSelected) in satellites(in: size) {
             let dimmed = focus != nil && !focus!.contains(function.id)
             let coverageFraction = activeCoverage?.functionFraction(
                 path: function.path, line: function.line)
@@ -284,10 +297,11 @@ struct FlatGraphView: View {
                                                        width: (r + 2) * 2, height: (r + 2) * 2)),
                                with: .color(.accentColor), lineWidth: 1.5)
             }
-            if (showLabels || selected) && !dimmed {
-                context.draw(Text(function.label).font(.system(size: labelSize - 2))
-                    .foregroundStyle(.secondary),
-                    at: CGPoint(x: at.x, y: at.y - r - 5))
+            // The selected node's satellites always label (the point of
+            // selecting is to read its functions); others follow zoom.
+            if (parentSelected || showLabels || selected) && !dimmed {
+                context.draw(Text(function.label).font(.system(size: labelSize - 1)),
+                             at: CGPoint(x: at.x, y: at.y - r - 6))
             }
         }
     }
@@ -383,7 +397,10 @@ struct FlatGraphView: View {
                 context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
                                with: .color(.accentColor), lineWidth: 2)
             }
-            if (showLabels || isSelected) && !dimmed {
+            // Everything in the focused blast radius labels, so a
+            // selection is fully readable, not just the node itself.
+            let inFocus = focus?.contains(node.id) ?? false
+            if (showLabels || isSelected || inFocus) && !dimmed {
                 context.draw(
                     Text(node.label).font(.system(size: labelSize))
                         .foregroundStyle(isSelected ? Color.primary : .secondary),
@@ -463,17 +480,49 @@ struct FlatGraphView: View {
         4 + min(CGFloat(scene.degree[id] ?? 0).squareRoot() * 1.5, 10)
     }
 
+    // MARK: - Focus zoom
+
+    /// Selecting a node frames it: pan+zoom so its blast radius fills
+    /// the view with room for labels and its function satellites.
+    /// Deselecting leaves the view where it is (double-tap resets).
+    private func focusOnSelection() {
+        guard let selected = store.selectedNode, viewSize != .zero,
+              let index = store.currentIndex else { return }
+        let ids = index.neighborhood(of: selected)
+        let points = ids.compactMap { frame.positions[$0] }
+        guard let anchor = frame.positions[selected] else { return }
+        var minX = anchor.x, maxX = anchor.x, minY = anchor.y, maxY = anchor.y
+        for p in points {
+            minX = min(minX, p.x); maxX = max(maxX, p.x)
+            minY = min(minY, p.y); maxY = max(maxY, p.y)
+        }
+        let center = SIMD2((minX + maxX) / 2, (minY + maxY) / 2)
+        // Extent padded generously so satellite rings and labels clear
+        // the edges rather than being cropped.
+        let extent = max(maxX - minX, maxY - minY, 120) + 160
+        let bounds = layoutBounds()
+        let fit = min(viewSize.width / bounds.width, viewSize.height / bounds.height, 2) * 0.9
+        let desiredScale = 0.5 * min(viewSize.width, viewSize.height) / extent
+        let newZoom = min(max(desiredScale / fit, 0.5), 6)
+        let scale = fit * newZoom
+        withAnimation(.snappy(duration: 0.4)) {
+            zoom = newZoom
+            pan = CGSize(width: scale * (bounds.midX - center.x),
+                         height: scale * (bounds.midY - center.y))
+        }
+    }
+
     // MARK: - Interaction
 
     private func select(at location: CGPoint, in size: CGSize) {
         var best: (id: String, distance: CGFloat)?
         // Satellites sit on top — hit-test them first, with a tight
         // radius so they don't steal clicks meant for their parent.
-        if expandFunctions {
-            for (function, at, _) in satellites(in: size) {
-                let distance = hypot(at.x - location.x, at.y - location.y)
+        if expandFunctions || store.selectedNode != nil {
+            for entry in satellites(in: size) {
+                let distance = hypot(entry.at.x - location.x, entry.at.y - location.y)
                 if distance < 6, distance < (best?.distance ?? .infinity) {
-                    best = (function.id, distance)
+                    best = (entry.node.id, distance)
                 }
             }
         }

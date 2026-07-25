@@ -180,6 +180,16 @@ public struct GraphScene: Sendable, Equatable {
         return component
     }
 
+    /// The full containing folder — the node's whole directory path,
+    /// so grouping mirrors the repo's folder tree exactly. Files at
+    /// the repo root and modules fall into "/".
+    public static func folder(of node: GraphSnapshot.Node) -> String {
+        guard node.kind != "core:module" else { return "modules" }
+        guard let path = node.path else { return "/" }
+        let directory = path.split(separator: "/").dropLast().joined(separator: "/")
+        return directory.isEmpty ? "/" : directory
+    }
+
     /// Grouping key for color coding: the project area a file lives
     /// in ("Sources/CygnusKit", "App", "Tests"…). Modules group as
     /// "modules".
@@ -204,6 +214,9 @@ public struct GraphScene: Sendable, Equatable {
         /// Project areas: top-level directory, one level deeper under
         /// source/test umbrella folders ("Sources/CygnusKit").
         case area = "Area"
+        /// Every containing folder is its own cluster — the repo's
+        /// directory structure, one region per folder.
+        case folder = "Folder"
         /// Three bands: production code, test code, imported modules.
         case layer = "Layer"
         /// Architectural roles by naming convention (MVVM / MVC):
@@ -314,6 +327,7 @@ public struct GraphScene: Sendable, Equatable {
         switch grouping {
         case .none: nil
         case .area: group(of: node)
+        case .folder: folder(of: node)
         case .layer:
             if node.kind == "core:module" { "Modules" }
             else if isTest(node) { "Tests" }
