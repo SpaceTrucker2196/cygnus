@@ -72,6 +72,9 @@ public final class WorkspaceStore {
     /// Test class → its last run outcome. Colors the test→code links
     /// (green pass, red fail, yellow partial).
     public private(set) var testResults: [String: TestOutcome] = [:]
+    /// Test method (by name) → its last verdict — finer than the class
+    /// result, so a single failing method reddens only its own links.
+    public private(set) var testMethodResults: [String: TestOutcome] = [:]
     private var coverageRunTask: Task<Void, Never>?
 
     public struct CoverageRunProgress: Equatable, Sendable {
@@ -115,6 +118,7 @@ public final class WorkspaceStore {
                 accumulated = accumulated.merged(with: attributed.report)
                 self.liveCoverage = accumulated
                 self.testResults[testClass] = attributed.outcome
+                self.testMethodResults.merge(attributed.methodOutcomes) { _, new in new }
             }
             self?.coverageRun = CoverageRunProgress(
                 done: ordered.count, total: ordered.count, current: "done")
@@ -166,6 +170,7 @@ public final class WorkspaceStore {
                     testClass: testClass, for: repo)
                 self.attributedCoverage = attributed
                 self.testResults[testClass] = attributed.outcome
+                self.testMethodResults.merge(attributed.methodOutcomes) { _, new in new }
             } catch {
                 self.attributedCoverage = nil
             }

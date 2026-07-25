@@ -64,6 +64,17 @@ struct CoverageProviderTests {
         #expect(m.functionFraction(path: "F.swift", line: 3) == 0.8)  // max span fraction
     }
 
+    @Test func parsesPerMethodOutcomes() {
+        let out = """
+        ✔ Test classifiesByFanInFanOut() passed after 0.001 seconds.
+        ✘ Test detectsCycleEdges() failed after 0.002 seconds.
+        """
+        let m = TestCoverageAttribution.methodOutcomes(fromTestOutput: out)
+        #expect(m["classifiesByFanInFanOut()"] == .passed)
+        #expect(m["detectsCycleEdges()"] == .failed)
+        #expect(m["nope()"] == nil)
+    }
+
     @Test func parsesTestOutcomeFromTranscript() {
         #expect(TestCoverageAttribution.outcome(
             fromTestOutput: "Test a passed after 0.1s\nTest b passed after 0.2s",

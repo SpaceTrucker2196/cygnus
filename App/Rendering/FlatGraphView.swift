@@ -225,8 +225,11 @@ struct FlatGraphView: View {
         guard edge.kind == "core:refersToSymbol",
               let source = byID[edge.from], GraphScene.isTest(source),
               let target = byID[edge.to], !GraphScene.isTest(target) else { return nil }
+        // Prefer the test method's own verdict (source is the method
+        // node); fall back to the enclosing class's result.
         let testClass = source.label.split(separator: ".").first.map(String.init) ?? source.label
-        switch store.testResults[testClass] {
+        let outcome = store.testMethodResults[source.label] ?? store.testResults[testClass]
+        switch outcome {
         case .passed: return .green
         case .failed: return .red
         case .partial: return .yellow

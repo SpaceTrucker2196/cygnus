@@ -188,15 +188,20 @@ public enum TestOutcome: String, Sendable, Equatable {
 }
 
 /// Coverage attributed to one test class: what THAT test exercises,
-/// and whether it passed.
+/// whether the class passed, and each test method's own verdict.
 public struct AttributedCoverage: Sendable, Equatable {
     public let testClass: String
     public let report: CoverageReport
     public let outcome: TestOutcome
-    public init(testClass: String, report: CoverageReport, outcome: TestOutcome) {
+    /// Per-method verdict, keyed by the method's name as it appears in
+    /// the graph (e.g. "classifiesByFanInFanOut()").
+    public let methodOutcomes: [String: TestOutcome]
+    public init(testClass: String, report: CoverageReport, outcome: TestOutcome,
+                methodOutcomes: [String: TestOutcome] = [:]) {
         self.testClass = testClass
         self.report = report
         self.outcome = outcome
+        self.methodOutcomes = methodOutcomes
     }
 }
 
@@ -216,9 +221,11 @@ public enum TestCoverageAttribution {
             throw ToolingError.nonZeroExit(.swift, code: result.exitCode,
                 stderr: "test run produced no coverage artifact")
         }
-        return AttributedCoverage(testClass: testClass, report: report,
-                                  outcome: outcome(fromTestOutput: result.stdoutString + result.stderr,
-                                                   exitCode: result.exitCode))
+        let transcript = result.stdoutString + result.stderr
+        return AttributedCoverage(
+            testClass: testClass, report: report,
+            outcome: outcome(fromTestOutput: transcript, exitCode: result.exitCode),
+            methodOutcomes: methodOutcomes(fromTestOutput: transcript))
     }
 
     /// Read pass/fail from a `swift test` transcript. Per-test lines
@@ -229,6 +236,23 @@ public enum TestCoverageAttribution {
         let failed = output.components(separatedBy: "failed after").count - 1
         if failed == 0 { return exitCode == 0 ? .passed : (passed > 0 ? .partial : .failed) }
         return passed > 0 ? .partial : .failed
+    }
+
+    /// Per-method verdicts from the transcript: lines read
+    /// "… Test <name> passed/failed after …" (swift-testing) — <name>
+    /// is the method as the graph knows it. A later verdict wins.
+    static func methodOutcomes(fromTestOutput output: String) -> [String: TestOutcome] {
+        var result: [String: TestOutcome] = [:]
+        for line in output.split(separator: "\n") {
+            guard let marker = line.range(of: "Test ") else { continue }
+            let rest = line[marker.upperBound...]
+            if let r = rest.range(of: " passed after") {
+                result[String(rest[..<r.lowerBound])] = .passed
+            } else if let r = rest.range(of: " failed after") {
+                result[String(rest[..<r.lowerBound])] = .failed
+            }
+        }
+        return result
     }
 }
 
