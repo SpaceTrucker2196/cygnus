@@ -101,6 +101,38 @@ public enum CoverageProvider {
     }
 }
 
+// MARK: - Per-test attribution
+
+/// Coverage attributed to one test class: what THAT test exercises.
+public struct AttributedCoverage: Sendable, Equatable {
+    public let testClass: String
+    public let report: CoverageReport
+    public init(testClass: String, report: CoverageReport) {
+        self.testClass = testClass
+        self.report = report
+    }
+}
+
+public enum TestCoverageAttribution {
+    /// Run exactly one test class with coverage and harvest the
+    /// resulting artifact — the coverage it shows is what this test
+    /// (alone) exercises. SPM repos only; the run happens in the
+    /// repo's own package (nested packages: the one whose Tests/
+    /// contains the class is found by the filter run itself).
+    public static func run(repoAt root: URL, testClass: String,
+                           tooling: any FactoryTooling,
+                           timeout: Duration = .seconds(600)) async throws -> AttributedCoverage {
+        _ = try await tooling.runChecked(.swift, [
+            "test", "--enable-code-coverage", "--filter", testClass,
+        ], workingDirectory: root, timeout: timeout)
+        guard let report = CoverageProvider.load(repoAt: root) else {
+            throw ToolingError.nonZeroExit(.swift, code: 0,
+                stderr: "test run produced no coverage artifact")
+        }
+        return AttributedCoverage(testClass: testClass, report: report)
+    }
+}
+
 // MARK: - Store wiring
 
 extension WorkspaceStore {
@@ -110,6 +142,20 @@ extension WorkspaceStore {
         guard let root = repoURL(id) else { return nil }
         return try? await RepoAccess.withAccess(to: root) { root in
             CoverageProvider.load(repoAt: root)
+        }
+    }
+
+    /// Attribute coverage to one test class by running it in
+    /// isolation. Runs the repo's own test suite — user-initiated
+    /// only, never automatic.
+    public func attributeCoverage(testClass: String, for id: UUID,
+                                  tooling: any FactoryTooling = ProcessTooling()) async throws -> AttributedCoverage {
+        guard let root = repoURL(id) else {
+            throw ToolingError.toolNotFound(.swift)
+        }
+        return try await RepoAccess.withAccess(to: root) { root in
+            try await TestCoverageAttribution.run(
+                repoAt: root, testClass: testClass, tooling: tooling)
         }
     }
 }

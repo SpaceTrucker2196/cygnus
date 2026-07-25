@@ -34,6 +34,10 @@ public struct ToolLocator: Sendable, Equatable {
         switch tool {
         case .git: gitPath
         case .gh: ghPath
+        // Xcode's shim is a fixed path; per-test coverage runs use it.
+        case .swift: Self.swiftCandidates.first {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }
         }
     }
 
@@ -54,6 +58,7 @@ public struct ToolLocator: Sendable, Equatable {
 
     static let gitCandidates = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
     static let ghCandidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"]
+    static let swiftCandidates = ["/usr/bin/swift"]
 
     /// Resolve both tools. Override → candidate list → login-shell
     /// probe. Pure enough to unit-test by injecting `fileExists` and

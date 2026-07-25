@@ -64,7 +64,19 @@ struct FlatGraphView: View {
             coverage = await store.loadCoverage(for: repo)
         }
         .overlay(alignment: .topLeading) {
-            if coverageMode, coverage == nil {
+            if coverageMode, let attributed = store.attributedCoverage {
+                HStack(spacing: 8) {
+                    Image(systemName: "scope").foregroundStyle(.tint)
+                    Text("Halos: coverage from \(attributed.testClass)")
+                        .font(.caption.weight(.medium))
+                    Button("Clear") { store.attributedCoverage = nil }
+                        .controlSize(.mini)
+                }
+                .padding(8)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                .padding(.top, 52)
+                .padding(.leading, 10)
+            } else if coverageMode, coverage == nil {
                 Text("No coverage artifact — run `swift test --enable-code-coverage`, then toggle again.")
                     .font(.caption)
                     .padding(8)
@@ -124,9 +136,12 @@ struct FlatGraphView: View {
                                                              in: colors)))
                 // Coverage halo: arc length = covered fraction, red →
                 // green ramp. Declarations inherit their file's
-                // coverage; nodes without data get no halo.
+                // coverage; nodes without data get no halo. Attributed
+                // coverage (one test class, run in isolation) wins
+                // over the whole-suite report.
                 if coverageMode,
-                   let fraction = coverage?.fraction(forPath: node.path) {
+                   let fraction = (store.attributedCoverage?.report ?? coverage)?
+                    .fraction(forPath: node.path) {
                     let haloRadius = radius + 4.5
                     var halo = Path()
                     halo.addArc(center: point, radius: haloRadius,

@@ -28,6 +28,25 @@ struct EntityInspectorView: View {
                         NodeRowView(node: node)
                             .font(.headline)
                     }
+                    if isTestClass(node) {
+                        Section("Coverage") {
+                            if store.attributingTest == node.label {
+                                HStack(spacing: 8) {
+                                    ProgressView().controlSize(.small)
+                                    Text("Running \(node.label)…").font(.caption)
+                                }
+                            } else {
+                                Button {
+                                    store.attributeCoverage(testClass: node.label)
+                                } label: {
+                                    Label("Show coverage from this test",
+                                          systemImage: "scope")
+                                }
+                                .disabled(store.attributingTest != nil)
+                                .help("Runs only this test class with coverage; graph halos switch to what it exercises")
+                            }
+                        }
+                    }
                     EdgeSection(title: "Outgoing",
                                 edges: index.outgoing[node.id] ?? [],
                                 endpoint: \.to, index: index)
@@ -68,6 +87,13 @@ struct EntityInspectorView: View {
 
     private func shortKind(_ kind: String) -> String {
         kind.split(separator: ":").last.map(String.init) ?? kind
+    }
+
+    /// A type declared in test code whose name follows the test-class
+    /// convention — the unit swift test's --filter accepts.
+    private func isTestClass(_ node: GraphSnapshot.Node) -> Bool {
+        node.kind.hasSuffix(":type") && GraphScene.isTest(node)
+            && (node.label.hasSuffix("Tests") || node.label.hasSuffix("Test"))
     }
 }
 
