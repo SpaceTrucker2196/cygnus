@@ -29,10 +29,12 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       provenance, run as its own revision inside `index`); rename
       detection (exact blob-match + fuzzy same-filename, one-to-one
       unambiguous only; `core:renamedFrom` breadcrumb on the moved
-      entity); IndexStoreDB spike (paper —
-      `docs/spikes/indexstoredb.md`: adopt as optional provider,
-      pending owner dependency audit) *(2026-07-24)*. **E6 complete**
-      modulo that audit decision.
+      entity); IndexStoreDB spiked, audited, and **adopted**
+      (`CygnusExtractorIndex.IndexStoreReader`, pinned
+      swift-6.3.3-RELEASE; smoke resolves real references on
+      cygnus's own store) *(2026-07-24)*. **E6 complete.** Next
+      engine order: occurrence observations → derived reference
+      edges.
 
 ## Shell
 
@@ -62,6 +64,8 @@ Engine (E) is the critical path; shell (S) runs in parallel against
 - [~] **S7** — Dark-factory ops dashboard *(landed unplanned,
       2026-07-24)*: sections (Dashboard/Workflow/Issues/Docs),
       capability detection, ledger/metrics/commits/runs cards,
-      fastlane screenshots + Pages previews, DF_Template installer.
-      Remaining scope is the owner's call — candidates: issue actions
-      from the app, converge triggering, multi-repo rollup view.
+      fastlane screenshots + Fastlane settings card + Pages previews,
+      DF_Template installer; portfolio overview (aggregate spend /
+      issues + per-repo cards when no repo is selected); coverage
+      halos with per-test attribution. Remaining candidates: issue
+      actions from the app, converge triggering.
