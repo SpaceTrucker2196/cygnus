@@ -75,6 +75,66 @@ private struct ScreenshotThumbnail: View {
     }
 }
 
+/// Fastlane configuration read from the repo: lanes with their
+/// descriptions and a CI badge for the ones workflow ymls actually
+/// invoke, Appfile settings, and the raw CI invocation lines.
+struct FastlaneCard: View {
+    let info: FastlaneInfo
+
+    var body: some View {
+        OpsCard(title: "Fastlane", systemImage: "point.forward.to.point.capsulepath") {
+            VStack(alignment: .leading, spacing: 10) {
+                if !info.lanes.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(info.lanes) { lane in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(lane.platform.map { "\($0) " } ?? "")
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                + Text(lane.name)
+                                    .font(.caption.monospaced().weight(.semibold))
+                                if lane.inCI {
+                                    Text("CI")
+                                        .font(.caption2.weight(.bold))
+                                        .padding(.horizontal, 5).padding(.vertical, 1)
+                                        .background(.green.opacity(0.2), in: Capsule())
+                                }
+                                if let desc = lane.desc {
+                                    Text(desc).font(.caption)
+                                        .foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                if !info.appfile.isEmpty {
+                    Divider()
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                        ForEach(info.appfile) { setting in
+                            GridRow {
+                                Text(setting.key).font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
+                                Text(setting.value).font(.caption.monospaced())
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                if !info.ciInvocations.isEmpty {
+                    Divider()
+                    ForEach(info.ciInvocations, id: \.self) { invocation in
+                        Text(invocation)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Preview of the repo's GitHub Pages site as a portrait page
 /// thumbnail (letter proportions — it reads as a document, not a
 /// letterboxed strip), with a button to open it properly. The web

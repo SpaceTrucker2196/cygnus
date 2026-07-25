@@ -207,17 +207,22 @@ public struct FactoryCapabilities: Sendable, Equatable {
     public var screenshots: [String]
     /// The repo's GitHub Pages site, when one is deployed.
     public var pagesURL: String?
+    /// Fastlane configuration (lanes, Appfile, CI invocations), when
+    /// the repo has a Fastfile.
+    public var fastlane: FastlaneInfo?
 
     public init(remote: RepoRemote? = nil, ghAvailable: Bool = false,
                 ghAuthenticated: Bool = false, hasConverge: Bool = false,
                 convergePath: String? = nil, hasMetrics: Bool = false,
                 hasLedger: Bool = false, hasWorkflows: Bool = false, hasDocs: Bool = false,
-                screenshots: [String] = [], pagesURL: String? = nil) {
+                screenshots: [String] = [], pagesURL: String? = nil,
+                fastlane: FastlaneInfo? = nil) {
         self.remote = remote; self.ghAvailable = ghAvailable
         self.ghAuthenticated = ghAuthenticated; self.hasConverge = hasConverge
         self.convergePath = convergePath; self.hasMetrics = hasMetrics
         self.hasLedger = hasLedger; self.hasWorkflows = hasWorkflows; self.hasDocs = hasDocs
         self.screenshots = screenshots; self.pagesURL = pagesURL
+        self.fastlane = fastlane
     }
 
     public static let empty = FactoryCapabilities()
