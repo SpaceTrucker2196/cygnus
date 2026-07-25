@@ -29,7 +29,10 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       provenance, run as its own revision inside `index`); rename
       detection (exact blob-match + fuzzy same-filename, one-to-one
       unambiguous only; `core:renamedFrom` breadcrumb on the moved
-      entity) *(2026-07-24)*. Remaining: IndexStoreDB spike.
+      entity); IndexStoreDB spike (paper —
+      `docs/spikes/indexstoredb.md`: adopt as optional provider,
+      pending owner dependency audit) *(2026-07-24)*. **E6 complete**
+      modulo that audit decision.
 
 ## Shell
 
