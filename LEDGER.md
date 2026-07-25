@@ -28,3 +28,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 9fd687f | 2026-07-25T04:14:52Z | claude-fable-5 | 995 | 22677 | 6900379 | 23530 | 8.5148 | Fastlane detail card: lanes/Appfile/CI-invocation scan + dashboard view |
 | 206206d | 2026-07-25T04:22:36Z | claude-fable-5 | 431 | 16136 | 11081702 | 30043 | 12.4937 | Root-cause + fix app crashes: ProcessRunner timeout-task data race (TSan-caught) |
 | 2eab6fc | 2026-07-25T04:40:55Z | claude-fable-5 | 2295 | 50396 | 28229746 | 47925 | 31.7310 | Per-test coverage attribution: filtered test runs feed per-test halos |
+| de3edc4 | 2026-07-25T04:44:44Z | claude-fable-5 | 1257 | 28274 | 15686443 | 22830 | 17.5693 | IndexStoreDB adopted: pinned dep, IndexStoreReader actor, live smoke on cygnus's |
