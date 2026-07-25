@@ -125,6 +125,36 @@ import CygnusObservation
         #expect(graphDecl?.children.map(\.entity.version.name) == ["build()"])
     }
 
+    @Test func renamedFileCarriesItsOriginAcrossReindex() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+
+        // Move Graph.swift deeper, unchanged content → exact rename.
+        let sources = root.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(
+            at: sources.appendingPathComponent("Core"), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(
+            at: sources.appendingPathComponent("Graph.swift"),
+            to: sources.appendingPathComponent("Core/Graph.swift"))
+
+        let result = try await workspace.index(repo)
+        #expect(result.filesRenamed == 1)
+
+        let store = await workspace.store
+        let moved = try #require(try store.entity(
+            stableKey: StableKey("phys:file:\(repo.raw)/Sources/Core/Graph.swift"),
+            at: .current))
+        #expect(moved.version.properties["core:renamedFrom"]
+                == .string("Sources/Graph.swift"))
+        // The old path's entity is retracted.
+        #expect(try store.entity(
+            stableKey: StableKey("phys:file:\(repo.raw)/Sources/Graph.swift"),
+            at: .current) == nil)
+    }
+
     @Test func reindexUnchangedIsIdempotent() async throws {
         let root = try makeFixture()
         defer { try? FileManager.default.removeItem(at: root) }
