@@ -30,11 +30,14 @@ public struct GraphSnapshot: Sendable, Equatable {
         public let kind: String        // namespaced kind, e.g. core:file
         public let label: String
         public let path: String?       // source anchor, when file-backed
-        public init(id: String, kind: String, label: String, path: String? = nil) {
+        public let line: Int?          // anchor start line (1-based)
+        public init(id: String, kind: String, label: String,
+                    path: String? = nil, line: Int? = nil) {
             self.id = id
             self.kind = kind
             self.label = label
             self.path = path
+            self.line = line
         }
     }
 

@@ -7,34 +7,62 @@ import CygnusKit
 struct EntityInspectorView: View {
     @Environment(WorkspaceStore.self) private var store
 
+    @State private var source: SourcePreview?
+
     var body: some View {
         if let node = store.selectedNodeValue, let index = store.currentIndex {
-            List {
-                Section {
-                    LabeledContent("Name", value: node.label)
-                    LabeledContent("Kind", value: shortKind(node.kind))
-                    if let path = node.path {
-                        LabeledContent("Path") {
-                            Text(path)
-                                .lineLimit(2)
-                                .truncationMode(.middle)
-                                .textSelection(.enabled)
+            VSplitView {
+                List {
+                    Section {
+                        LabeledContent("Name", value: node.label)
+                        LabeledContent("Kind", value: shortKind(node.kind))
+                        if let path = node.path {
+                            LabeledContent("Path") {
+                                Text(path)
+                                    .lineLimit(2)
+                                    .truncationMode(.middle)
+                                    .textSelection(.enabled)
+                            }
                         }
+                    } header: {
+                        NodeRowView(node: node)
+                            .font(.headline)
                     }
-                } header: {
-                    NodeRowView(node: node)
-                        .font(.headline)
+                    EdgeSection(title: "Outgoing",
+                                edges: index.outgoing[node.id] ?? [],
+                                endpoint: \.to, index: index)
+                    EdgeSection(title: "Incoming",
+                                edges: index.incoming[node.id] ?? [],
+                                endpoint: \.from, index: index)
                 }
-                EdgeSection(title: "Outgoing",
-                            edges: index.outgoing[node.id] ?? [],
-                            endpoint: \.to, index: index)
-                EdgeSection(title: "Incoming",
-                            edges: index.incoming[node.id] ?? [],
-                            endpoint: \.from, index: index)
+                .frame(minHeight: 160)
+                if node.path != nil {
+                    // The code pane owns all remaining split space and
+                    // grows with the pane as the divider or window
+                    // moves.
+                    codePane(node: node)
+                        .frame(minHeight: 120, maxHeight: .infinity)
+                }
+            }
+            .task(id: node.id) {
+                source = nil
+                guard let path = node.path, let repo = store.selectedRepo else { return }
+                source = await store.loadSource(path: path, for: repo)
             }
         } else {
             ContentUnavailableView("No Selection", systemImage: "cursorarrow.rays",
                                    description: Text("Select an entity to inspect it."))
+        }
+    }
+
+    @ViewBuilder private func codePane(node: GraphSnapshot.Node) -> some View {
+        if let source {
+            CodePreviewView(preview: source, highlightLine: node.line)
+        } else {
+            ContentUnavailableView {
+                Label("Loading Source…", systemImage: "doc.text")
+            }
+            .symbolVariant(.none)
         }
     }
 

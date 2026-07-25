@@ -10,6 +10,24 @@ import CygnusEngine
 // repository through CygnusWorkspace, then projects the graph into
 // the immutable GraphSnapshot the renderers and inspector consume.
 
+/// One CygnusWorkspace per directory, process-wide. A workspace owns
+/// a GRDB DatabasePool, and two pools on the same database file in
+/// one process is a GRDB programmer error — concurrent analyses were
+/// doing exactly that (one fresh workspace per analyze) and crashing
+/// in statement binding. The actor also serializes creation.
+private actor WorkspaceCache {
+    static let shared = WorkspaceCache()
+    private var workspaces: [String: CygnusWorkspace] = [:]
+
+    func workspace(directory: URL) throws -> CygnusWorkspace {
+        let key = directory.standardizedFileURL.path
+        if let existing = workspaces[key] { return existing }
+        let created = try CygnusWorkspace(directory: directory)
+        workspaces[key] = created
+        return created
+    }
+}
+
 public struct WorkspaceGraphEngine: GraphEngine {
     private let workspaceDirectory: URL
 
@@ -25,7 +43,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let workspace = try CygnusWorkspace(directory: directory)
+                    let workspace = try await WorkspaceCache.shared.workspace(directory: directory)
                     continuation.yield(.phase("scanning"))
                     let repoID = try await workspace.register(path: url)
                     let displayName = url.lastPathComponent
@@ -104,7 +122,8 @@ public struct WorkspaceGraphEngine: GraphEngine {
                     id: resolved.entity.stableKey.raw,
                     kind: resolved.entity.kind.rawValue,
                     label: resolved.version.name,
-                    path: resolved.version.anchors.first?.path)
+                    path: resolved.version.anchors.first?.path,
+                    line: resolved.version.anchors.first?.range?.startLine)
             }
             .sorted { $0.id < $1.id }
 
