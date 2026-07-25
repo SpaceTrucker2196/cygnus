@@ -72,7 +72,12 @@ struct GraphLegendView: View {
             }
             Divider().frame(width: 150)
             legendRow(symbol: circleSizes, "size = connections (hubs are big)")
-            legendRow(symbol: coverageArc, "halo = test coverage")
+            legendRow(symbol: coverageArc, "ring = per-function coverage")
+            legendRow(symbol: AnyView(HStack(spacing: 2) {
+                Capsule().fill(.green).frame(width: 5, height: 3)
+                Capsule().fill(.yellow).frame(width: 5, height: 3)
+                Capsule().fill(.red).frame(width: 5, height: 3)
+            }), "test link: pass / partial / fail")
             if cycleCount > 0 {
                 legendRow(symbol: AnyView(
                     Capsule().fill(.orange).frame(width: 14, height: 3)),

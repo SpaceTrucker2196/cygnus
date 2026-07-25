@@ -32,16 +32,48 @@ struct CoverageProviderTests {
            "summary":{"lines":{"count":10,"covered":10,"percent":100.0}}},
           {"filename":"/usr/lib/other.swift",
            "summary":{"lines":{"count":5,"covered":0,"percent":0.0}}}
+        ],"functions":[
+          {"filenames":["/tmp/repo/Sources/Kit/A.swift"],
+           "regions":[[10,1,20,2,3,0,0,0],[12,1,14,2,0,0,0,0]]},
+          {"filenames":["/tmp/repo/.build/checkouts/Dep/D.swift"],
+           "regions":[[1,1,2,2,9,0,0,0]]}
         ]}],"type":"llvm.coverage.json.export","version":"2.0.1"}
         """
         let parsed = try #require(CoverageProvider.parse(
             llvmCovJSON: Data(json.utf8), repoRoot: root))
-        #expect(parsed == ["Sources/Kit/A.swift": 0.85])   // dep + SDK dropped
+        #expect(parsed.lines == ["Sources/Kit/A.swift": 0.85])   // dep + SDK dropped
 
-        let report = CoverageReport(byPath: parsed, source: "x")
+        let report = CoverageReport(byPath: parsed.lines,
+                                    functionsByPath: parsed.functions, source: "x")
         #expect(report.fraction(forPath: "Sources/Kit/A.swift") == 0.85)
         #expect(report.fraction(forPath: "Sources/Kit/B.swift") == nil)
-        #expect(report.fraction(forPath: nil) == nil)
+        // Function spanning lines 10–20, one of two regions covered → 0.5.
+        #expect(report.functionFraction(path: "Sources/Kit/A.swift", line: 15) == 0.5)
+        #expect(report.functionFraction(path: "Sources/Kit/A.swift", line: 99) == nil)
+        // Dep function dropped with .build.
+        #expect(report.functionsByPath[".build/checkouts/Dep/D.swift"] == nil)
+    }
+
+    @Test func mergedUnionsFunctionSpans() {
+        let a = CoverageReport(byPath: ["F.swift": 0.4],
+            functionsByPath: ["F.swift": [.init(start: 1, end: 5, fraction: 0.3)]], source: "a")
+        let b = CoverageReport(byPath: ["F.swift": 0.6],
+            functionsByPath: ["F.swift": [.init(start: 1, end: 5, fraction: 0.8)]], source: "b")
+        let m = a.merged(with: b)
+        #expect(m.fraction(forPath: "F.swift") == 0.6)          // max line coverage
+        #expect(m.functionFraction(path: "F.swift", line: 3) == 0.8)  // max span fraction
+    }
+
+    @Test func parsesTestOutcomeFromTranscript() {
+        #expect(TestCoverageAttribution.outcome(
+            fromTestOutput: "Test a passed after 0.1s\nTest b passed after 0.2s",
+            exitCode: 0) == .passed)
+        #expect(TestCoverageAttribution.outcome(
+            fromTestOutput: "Test a passed after 0.1s\nTest b failed after 0.2s",
+            exitCode: 1) == .partial)
+        #expect(TestCoverageAttribution.outcome(
+            fromTestOutput: "Test a failed after 0.1s",
+            exitCode: 1) == .failed)
     }
 
     @Test func findsNewestCodecovArtifact() throws {
