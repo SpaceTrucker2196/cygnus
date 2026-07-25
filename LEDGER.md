@@ -21,3 +21,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 43f00b4 | 2026-07-24T21:36:10Z | claude-fable-5 | 2029 | 65190 | 20604174 | 66066 | 25.2053 | Root-cause fix: SnapshotIndex exponential DAG materialization (25 GB runaway); m |
 | 36abca5 | 2026-07-24T22:12:46Z | claude-fable-5 | 4137 | 89164 | 37882773 | 105418 | 44.4907 | E6 derived import rollups: Deriver protocol, ImportRollupDeriver, provenance-lin |
 | e4b9672 | 2026-07-25T00:49:28Z | claude-fable-5 | 1474 | 78749 | 29615272 | 1253849 | 58.6444 | Sweep fixes (blue tests, inspector code pane, workspace-cache crash fix) + v0.1. |
+| 8bb0c8a | 2026-07-25T00:57:58Z | claude-fable-5 | 1615 | 33169 | 14337274 | 41043 | 16.8327 | E6 rename detection: exact+fuzzy manifest-diff renames, core:renamedFrom breadcr |
