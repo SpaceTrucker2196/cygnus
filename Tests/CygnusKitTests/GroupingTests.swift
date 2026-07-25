@@ -102,3 +102,46 @@ import Foundation
         }
     }
 }
+
+@Suite struct StructuralRoleTests {
+    private func file(_ id: String) -> GraphSnapshot.Node {
+        GraphSnapshot.Node(id: id, kind: "core:file", label: id, path: "\(id).swift")
+    }
+    private func ref(_ from: String, _ to: String) -> GraphSnapshot.Edge {
+        GraphSnapshot.Edge(from: from, to: to, kind: "core:references")
+    }
+
+    @Test func classifiesByFanInFanOut() {
+        // model ← (a,b,c) ; hub ← (a,b) and hub → (model,x,y) ;
+        // entry → (a,b,c) ; leaf isolated.
+        let nodes = ["model","hub","entry","leaf","a","b","c","x","y"].map(file)
+        let edges = [
+            ref("a","model"), ref("b","model"), ref("c","model"),
+            ref("a","hub"), ref("b","hub"),
+            ref("hub","model"), ref("hub","x"), ref("hub","y"),
+            ref("entry","a"), ref("entry","b"), ref("entry","c"),
+        ]
+        let roles = GraphScene(nodes: nodes, edges: edges).structuralRoles()
+        #expect(roles["model"] == "Core")     // in≥2, out<2
+        #expect(roles["hub"] == "Hub")         // in≥2, out≥2
+        #expect(roles["entry"] == "Entry")     // out≥2, in<2
+        #expect(roles["leaf"] == "Leaf")       // isolated
+    }
+
+    @Test func roleGroupingFlowsThroughClusters() {
+        let scene = GraphScene(
+            nodes: ["a","b","core"].map(file),
+            edges: [ref("a","core"), ref("b","core")])
+        let clusters = scene.clusters(grouping: .role)
+        #expect(clusters["core"] == "Core")
+        #expect(clusters["a"] == "Entry" || clusters["a"] == "Leaf")
+    }
+
+    @Test func containmentEdgesDoNotCountAsDependencies() {
+        // A repo→file contains edge must not make the file a "Core".
+        let scene = GraphScene(
+            nodes: [file("repo"), file("f")],
+            edges: [GraphSnapshot.Edge(from: "repo", to: "f", kind: "core:containsPhysical")])
+        #expect(scene.structuralRoles()["f"] == "Leaf")
+    }
+}

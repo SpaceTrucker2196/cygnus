@@ -78,8 +78,9 @@ struct FlatGraphView: View {
         .overlay(alignment: .topLeading) { coverageStatus }
         .overlay(alignment: .bottomLeading) {
             if legendShown {
+                let clusters = scene.clusters(grouping: grouping)
                 GraphLegendView(scene: scene, cycleCount: cyclicEdges.count,
-                                colors: GraphPalette.colors(for: scene, grouping: grouping))
+                                colors: GraphPalette.colors(nodes: scene.nodes, clusters: clusters))
             }
         }
         .overlay(alignment: .bottomTrailing) { statusReadout }
@@ -134,13 +135,14 @@ struct FlatGraphView: View {
     private func canvas(in size: CGSize) -> some View {
         Canvas { context, size in
             let transform = viewTransform(in: size)
-            let colors = GraphPalette.colors(for: scene, grouping: grouping)
+            let clusters = scene.clusters(grouping: grouping)
+            let colors = GraphPalette.colors(nodes: scene.nodes, clusters: clusters)
             let focus = focusSet
             drawGroupRegions(context: context, transform: transform,
-                             colors: colors, focus: focus)
+                             clusters: clusters, colors: colors, focus: focus)
             drawEdges(context: context, transform: transform, focus: focus)
             drawNodes(context: context, in: size, transform: transform,
-                      colors: colors, focus: focus)
+                      clusters: clusters, colors: colors, focus: focus)
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
@@ -202,8 +204,8 @@ struct FlatGraphView: View {
     }
 
     private func drawNodes(context: GraphicsContext, in size: CGSize,
-                           transform: CGAffineTransform, colors: [String: Color],
-                           focus: Set<String>?) {
+                           transform: CGAffineTransform, clusters: [String: String],
+                           colors: [String: Color], focus: Set<String>?) {
         let showLabels = labelMode == .on
             || (labelMode == .auto && (scene.nodes.count <= 250 || currentScale(in: size) > 1.5))
         for node in scene.nodes {
@@ -214,7 +216,7 @@ struct FlatGraphView: View {
                               width: radius * 2, height: radius * 2)
             let isSelected = node.id == store.selectedNode
             let dimmed = focus != nil && !focus!.contains(node.id)
-            let fill = GraphPalette.color(for: node, grouping: grouping, in: colors)
+            let fill = GraphPalette.color(for: node, clusters: clusters, in: colors)
             context.fill(Path(ellipseIn: rect),
                          with: .color(fill.opacity(dimmed ? 0.2 : 1)))
 
@@ -243,12 +245,13 @@ struct FlatGraphView: View {
 
     /// Tinted, labeled hull behind each cluster.
     private func drawGroupRegions(context: GraphicsContext, transform: CGAffineTransform,
-                                  colors: [String: Color], focus: Set<String>?) {
+                                  clusters: [String: String], colors: [String: Color],
+                                  focus: Set<String>?) {
         guard grouping != .none else { return }
         var members: [String: [SIMD2<Double>]] = [:]
         for node in scene.nodes {
             guard let position = frame.positions[node.id],
-                  let key = GraphScene.clusterKey(of: node, grouping: grouping) else { continue }
+                  let key = clusters[node.id] else { continue }
             let point = CGPoint(x: position.x, y: position.y).applying(transform)
             members[key, default: []].append(SIMD2(point.x, point.y))
         }
