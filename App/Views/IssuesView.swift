@@ -226,12 +226,27 @@ private struct IssueDetailPane: View {
                             text: issue.state == .open ? "Open" : "Closed")
                 Text("#\(issue.number) · \(issue.author)").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                if issue.state == .open { convergeButton(issue) }
                 if canWrite { stateButton(issue) }
             }
             if !issue.labels.isEmpty {
                 HStack { ForEach(issue.labels) { LabelChip(label: $0) } }
             }
         }
+    }
+
+    /// Hands the order to the converge loop in Terminal — a launch,
+    /// not autonomous execution; the loop runs under the user's eye.
+    private func convergeButton(_ issue: Issue) -> some View {
+        Button {
+            if let script = store.convergeScript(issue: issue.number, for: repoID) {
+                NSWorkspace.shared.open(script)
+            }
+        } label: {
+            Label("Converge", systemImage: "play.circle")
+        }
+        .controlSize(.small)
+        .help("Open Terminal at the repo and start /converge #\(issue.number)")
     }
 
     @ViewBuilder private func stateButton(_ issue: Issue) -> some View {

@@ -54,6 +54,17 @@ public struct GraphScene: Sendable, Equatable {
         return GraphScene(nodes: nodes, edges: edges)
     }
 
+    /// The symbol reference graph: declaration → declaration edges
+    /// (`core:refersToSymbol`, the compiler-resolved caller/callee
+    /// wiring from index-store enrichment). Present only after a repo
+    /// has been built with an index; empty otherwise.
+    public static func symbols(from snapshot: GraphSnapshot) -> GraphScene {
+        let refs = snapshot.edges.filter { $0.kind == "core:refersToSymbol" }
+        let ids = Set(refs.flatMap { [$0.from, $0.to] })
+        let nodes = snapshot.nodes.filter { ids.contains($0.id) }
+        return GraphScene(nodes: nodes, edges: refs)
+    }
+
     /// Grouping key for color coding: the project area a file lives
     /// in ("Sources/CygnusKit", "App", "Tests"…). Modules group as
     /// "modules".
