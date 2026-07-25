@@ -70,13 +70,13 @@ struct GraphLegendView: View {
                 Button {
                     explodedGroup = (explodedGroup == group) ? nil : group
                 } label: {
-                    HStack(spacing: 6) {
-                        Circle().fill(color).frame(width: 9, height: 9)
+                    HStack(spacing: 7) {
+                        Circle().fill(color).frame(width: 12, height: 12)
                         Text(group == "modules" ? "modules (imported targets)" : group)
-                            .font(.caption)
+                            .font(.callout)
                             .fontWeight(explodedGroup == group ? .bold : .regular)
                         if explodedGroup == group {
-                            Image(systemName: "scope").font(.caption2).foregroundStyle(.tint)
+                            Image(systemName: "scope").font(.caption).foregroundStyle(.tint)
                         }
                     }
                 }
@@ -109,9 +109,9 @@ struct GraphLegendView: View {
     }
 
     private func legendRow(symbol: some View, _ text: String) -> some View {
-        HStack(spacing: 6) {
-            symbol.frame(width: 16, alignment: .center)
-            Text(text).font(.caption)
+        HStack(spacing: 7) {
+            symbol.frame(width: 18, alignment: .center)
+            Text(text).font(.callout)
         }
     }
 
