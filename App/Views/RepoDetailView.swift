@@ -182,6 +182,7 @@ struct DependencyGraphView: View {
         let scene = switch store.graphContent {
         case .code: GraphScene.dependencies(from: snapshot,
                                             showExternal: store.showExternalModules)
+        case .callers: GraphScene.callers(from: snapshot)
         case .symbols: GraphScene.symbols(from: snapshot)
         }
         if scene.nodes.isEmpty {
@@ -199,11 +200,12 @@ struct DependencyGraphView: View {
                 systemImage: "point.3.filled.connected.trianglepath.dotted",
                 description: Text("Only project-internal imports are charted. " +
                                   "Try Filters → Show External Modules."))
-        case .symbols:
+        case .callers, .symbols:
             ContentUnavailableView {
-                Label("No Symbol References", systemImage: "arrow.triangle.branch")
+                Label(store.graphContent == .callers ? "No Caller Links" : "No Symbol References",
+                      systemImage: "arrow.triangle.branch")
             } description: {
-                Text("Declaration references come from a compiled index store.")
+                Text("Caller/reference links come from a compiled index store.")
             } actions: {
                 Button {
                     if let id = store.selectedRepo { store.buildIndex(for: id) }
