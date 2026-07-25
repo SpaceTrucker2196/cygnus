@@ -83,13 +83,14 @@ enum LabelMode: String, CaseIterable {
     case auto = "Auto", on = "On", off = "Off"
 }
 
-/// Zoom / label / grouping controls for the graph view.
+/// Zoom / label / grouping / coverage controls for the graph view.
 struct GraphControlBar: View {
     @Binding var zoom: CGFloat
     @Binding var labelMode: LabelMode
     @Binding var labelSize: Double
     @Binding var legendShown: Bool
     @Binding var grouping: GraphScene.Grouping
+    @Binding var coverageMode: Bool
 
     var body: some View {
         HStack(spacing: 14) {
@@ -119,6 +120,9 @@ struct GraphControlBar: View {
             .frame(width: 150)
             Toggle("Legend", isOn: $legendShown)
                 .toggleStyle(.checkbox)
+            Toggle("Coverage", isOn: $coverageMode)
+                .toggleStyle(.checkbox)
+                .help("Halo per node showing test line-coverage (from the newest swift test --enable-code-coverage artifact)")
         }
         .controlSize(.small)
         .padding(.horizontal, 12)

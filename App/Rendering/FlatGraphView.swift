@@ -18,6 +18,8 @@ struct FlatGraphView: View {
     @State private var labelSize: Double = 11
     @State private var legendShown = true
     @State private var grouping: GraphScene.Grouping = .area
+    @State private var coverageMode = false
+    @State private var coverage: CoverageReport?
 
     /// Layout restarts when either the scene or the grouping changes;
     /// warm-start keeps existing nodes near where they were.
@@ -52,7 +54,21 @@ struct FlatGraphView: View {
         .overlay(alignment: .top) {
             GraphControlBar(zoom: $zoom, labelMode: $labelMode,
                             labelSize: $labelSize, legendShown: $legendShown,
-                            grouping: $grouping)
+                            grouping: $grouping, coverageMode: $coverageMode)
+        }
+        .task(id: coverageMode) {
+            guard coverageMode, let repo = store.selectedRepo else { return }
+            coverage = await store.loadCoverage(for: repo)
+        }
+        .overlay(alignment: .topLeading) {
+            if coverageMode, coverage == nil {
+                Text("No coverage artifact — run `swift test --enable-code-coverage`, then toggle again.")
+                    .font(.caption)
+                    .padding(8)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    .padding(.top, 52)
+                    .padding(.leading, 10)
+            }
         }
         .overlay(alignment: .bottomLeading) {
             if legendShown {
@@ -103,6 +119,23 @@ struct FlatGraphView: View {
                 context.fill(Path(ellipseIn: rect),
                              with: .color(GraphPalette.color(for: node, grouping: grouping,
                                                              in: colors)))
+                // Coverage halo: arc length = covered fraction, red →
+                // green ramp. Declarations inherit their file's
+                // coverage; nodes without data get no halo.
+                if coverageMode,
+                   let fraction = coverage?.fraction(forPath: node.path) {
+                    let haloRadius = radius + 4.5
+                    var halo = Path()
+                    halo.addArc(center: point, radius: haloRadius,
+                                startAngle: .degrees(-90),
+                                endAngle: .degrees(-90 + 360 * fraction),
+                                clockwise: false)
+                    context.stroke(
+                        halo,
+                        with: .color(Color(hue: 0.33 * fraction, saturation: 0.85,
+                                           brightness: 0.85)),
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                }
                 if isSelected {
                     context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
                                    with: .color(.accentColor), lineWidth: 2)
