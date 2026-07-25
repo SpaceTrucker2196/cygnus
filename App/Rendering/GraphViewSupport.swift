@@ -20,36 +20,37 @@ enum GraphPalette {
             || key.hasPrefix("test/") || key.hasPrefix("UITests")
     }
 
-    /// Colors keyed by the active grouping's cluster names. Semantic
-    /// groups get pinned colors (tests are always blue, imported
-    /// modules always purple — segregating tests/externals visually);
-    /// the rest take stable sorted hues.
-    static func colors(for scene: GraphScene,
-                       grouping: GraphScene.Grouping) -> [String: Color] {
-        let keys = Set(scene.nodes.compactMap {
-            GraphScene.clusterKey(of: $0, grouping: grouping) ?? GraphScene.group(of: $0)
-        })
+    /// A node's colour key: its cluster under the active grouping, or
+    /// its project area when the grouping leaves it unassigned (e.g.
+    /// None colours by area). One definition every drawing path uses.
+    static func key(for node: GraphSnapshot.Node, clusters: [String: String]) -> String {
+        clusters[node.id] ?? GraphScene.group(of: node)
+    }
+
+    /// Colors keyed by cluster name. Semantic groups get pinned colors
+    /// (tests always blue, modules always purple — segregating
+    /// tests/externals visually); the rest take stable sorted hues.
+    static func colors(nodes: [GraphSnapshot.Node],
+                       clusters: [String: String]) -> [String: Color] {
+        let keys = Set(nodes.map { key(for: $0, clusters: clusters) })
         var colors: [String: Color] = [:]
         var hueIndex = 0
-        for key in keys.sorted() {
-            if key == "modules" || key == "Modules" {
-                colors[key] = .purple
-            } else if isTestKey(key) {
-                colors[key] = .blue
+        for name in keys.sorted() {
+            if name == "modules" || name == "Modules" {
+                colors[name] = .purple
+            } else if isTestKey(name) {
+                colors[name] = .blue
             } else {
-                colors[key] = hues[hueIndex % hues.count]
+                colors[name] = hues[hueIndex % hues.count]
                 hueIndex += 1
             }
         }
         return colors
     }
 
-    static func color(for node: GraphSnapshot.Node,
-                      grouping: GraphScene.Grouping,
+    static func color(for node: GraphSnapshot.Node, clusters: [String: String],
                       in colors: [String: Color]) -> Color {
-        let key = GraphScene.clusterKey(of: node, grouping: grouping)
-            ?? GraphScene.group(of: node)
-        return colors[key] ?? .gray
+        colors[key(for: node, clusters: clusters)] ?? .gray
     }
 }
 

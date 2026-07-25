@@ -166,8 +166,47 @@ public struct GraphScene: Sendable, Equatable {
         /// Architectural roles by naming convention (MVVM / MVC):
         /// Models, Views, ViewModels, Controllers, Services, Stores.
         case pattern = "Pattern"
+        /// Structural role inferred from the dependency graph itself —
+        /// no names. Where a node sits in the flow (Core/Hub/Entry/Leaf).
+        case role = "Role"
         /// No spatial grouping; pure force layout (color still by area).
         case none = "None"
+    }
+
+    /// Kinds that mean "A depends on B" (as opposed to containment or
+    /// declaration structure) — the substrate for structural roles.
+    private static let dependencyKinds: Set<String> = [
+        "core:imports", "core:dependsOn", "core:references", "core:refersToSymbol",
+    ]
+
+    /// Structural role per node, inferred from position in the
+    /// dependency flow — depended-upon vs depends-on, name-free:
+    ///   Core  — depended-upon, depends on little (foundations)
+    ///   Hub   — depends on and is depended-upon (orchestrators)
+    ///   Entry — depends on much, depended-upon by little (drivers)
+    ///   Leaf  — barely connected (utilities, isolated)
+    /// Threshold `t` is the fan-in/out above which a direction counts
+    /// as "significant"; 2 keeps single incidental edges from
+    /// promoting a node.
+    public func structuralRoles(threshold t: Int = 2) -> [String: String] {
+        var fanOut: [String: Set<String>] = [:]
+        var fanIn: [String: Set<String>] = [:]
+        for edge in edges where Self.dependencyKinds.contains(edge.kind) && edge.from != edge.to {
+            fanOut[edge.from, default: []].insert(edge.to)
+            fanIn[edge.to, default: []].insert(edge.from)
+        }
+        var roles: [String: String] = [:]
+        for node in nodes {
+            let out = fanOut[node.id]?.count ?? 0
+            let into = fanIn[node.id]?.count ?? 0
+            roles[node.id] = switch (into >= t, out >= t) {
+            case (true, false): "Core"
+            case (true, true): "Hub"
+            case (false, true): "Entry"
+            case (false, false): "Leaf"
+            }
+        }
+        return roles
     }
 
     /// Path components that mark everything beneath them as test code.
@@ -237,21 +276,28 @@ public struct GraphScene: Sendable, Equatable {
             else if isTest(node) { "Tests" }
             else { "Production" }
         case .pattern: patternRole(of: node)
+        // Structural role needs whole-graph context — computed in
+        // bulk by clusters(grouping:), not per node.
+        case .role: nil
         }
     }
 
     /// Node → cluster key for every node in the scene (empty for
-    /// `.none`). This is what the layout engine and region renderer
-    /// consume; they never re-derive membership separately.
+    /// `.none`). This is what the layout engine, palette, and region
+    /// renderer consume; they never re-derive membership separately.
     public func clusters(grouping: Grouping) -> [String: String] {
-        guard grouping != .none else { return [:] }
-        var clusters: [String: String] = [:]
-        clusters.reserveCapacity(nodes.count)
-        for node in nodes {
-            if let key = Self.clusterKey(of: node, grouping: grouping) {
-                clusters[node.id] = key
+        switch grouping {
+        case .none: return [:]
+        case .role: return structuralRoles()
+        default:
+            var clusters: [String: String] = [:]
+            clusters.reserveCapacity(nodes.count)
+            for node in nodes {
+                if let key = Self.clusterKey(of: node, grouping: grouping) {
+                    clusters[node.id] = key
+                }
             }
+            return clusters
         }
-        return clusters
     }
 }
