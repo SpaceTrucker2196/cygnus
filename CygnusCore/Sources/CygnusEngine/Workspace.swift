@@ -121,12 +121,26 @@ public actor CygnusWorkspace {
         let diff = ManifestDiff.between(previous, manifest)
 
         // Nothing changed since the last committed snapshot: no new
-        // snapshot, no empty revision.
+        // snapshot, no empty revision. But an index store may have
+        // appeared since the last run (the "Build Index" button, a CI
+        // build) — reference enrichment reads that, not the source, so
+        // run it even on a source no-op or symbols would never show up
+        // after a build.
         if diff.isEmpty, previous != nil,
            let current = try store.currentRevision(),
            let (snapshotID, _) = try store.latestIndexedSnapshot(repository: repoID) {
+            var revision = current
+            do {
+                if let enriched = try await enrichReferences(
+                    repoID: repoID, root: root, snapshot: snapshotID,
+                    currentPaths: Set(manifest.files.map(\.path)), progress: progress) {
+                    revision = enriched
+                }
+            } catch {
+                FileHandle.standardError.write(Data("enrichment skipped: \(error)\n".utf8))
+            }
             return IndexResult(
-                repository: repoID, revision: current, snapshot: snapshotID,
+                repository: repoID, revision: revision, snapshot: snapshotID,
                 filesAnalyzed: manifest.files.count, filesChanged: 0, filesRenamed: 0,
                 entityCount: 0, relationshipCount: 0)
         }
@@ -396,7 +410,10 @@ public actor CygnusWorkspace {
         }
 
         // Retract stale reference edges (identity includes the count,
-        // matching the rollup deriver's convention).
+        // matching the rollup deriver's convention). `currentFile`
+        // records what's already present so an unchanged re-run can
+        // skip committing entirely (no revision bloat under the watch).
+        var currentFile = Set<String>()
         for edge in try store.relationships(kind: .references, at: .current)
         where edge.layer == .derived {
             let endpoints = try store.entities(ids: [edge.source, edge.target], at: .current)
@@ -408,6 +425,7 @@ public actor CygnusWorkspace {
                 value
             } else { nil }
             let identity = "\(pathOf(source.stableKey, repo: repoID))→\(pathOf(target.stableKey, repo: repoID))#\(count.map(String.init) ?? "?")"
+            currentFile.insert(identity)
             if !asserted.contains(identity) {
                 changes.retractRelationships.append(edge.id)
             }
@@ -416,6 +434,7 @@ public actor CygnusWorkspace {
         // Retract stale symbol edges by (source, target, count),
         // reading stable keys directly (both endpoints are decls in
         // this repo).
+        var currentSymbol = Set<String>()
         for edge in try store.relationships(kind: .refersToSymbol, at: .current)
         where edge.layer == .derived {
             let endpoints = try store.entities(ids: [edge.source, edge.target], at: .current)
@@ -427,13 +446,19 @@ public actor CygnusWorkspace {
                 value
             } else { nil }
             let identity = "\(source.stableKey.raw)→\(target.stableKey.raw)#\(count.map(String.init) ?? "?")"
+            currentSymbol.insert(identity)
             if !assertedSymbols.contains(identity) {
                 changes.retractRelationships.append(edge.id)
             }
         }
 
-        guard !changes.relationships.isEmpty || !changes.retractRelationships.isEmpty
-        else { return nil }
+        // Skip the commit when the graph already holds exactly these
+        // edges — nothing to retract and nothing new — so a re-run over
+        // an unchanged index mints no revision.
+        let nothingNew = changes.retractRelationships.isEmpty
+            && asserted.isSubset(of: currentFile)
+            && assertedSymbols.isSubset(of: currentSymbol)
+        guard !nothingNew else { return nil }
         return try store.commit(
             changes,
             note: "enrich: \(pairs.count) file + \(symbolPairs.count) symbol reference edges")
