@@ -37,3 +37,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 628cf6d | 2026-07-25T17:35:25Z | claude-opus-4-8 | 2781 | 81552 | 19384312 | 95853 | 12.7034 | 2D pattern visualizer: cycle detection+highlight, focus/blast-radius mode, live  |
 | 7175eb7 | 2026-07-25T17:39:00Z | claude-opus-4-8 | 7886 | 29368 | 13738237 | 37729 | 8.0200 | Structural Role grouping from dependency fan-in/out (Core/Hub/Entry/Leaf), group |
 | de3bbfb | 2026-07-25T17:51:22Z | claude-opus-4-8 | 5977 | 67289 | 25540810 | 58886 | 15.0714 | Per-function coverage rings on class nodes + test-outcome-colored (green/red/yel |
+| 44aa088 | 2026-07-25T17:58:06Z | claude-opus-4-8 | 463 | 8254 | 5149580 | 8998 | 2.8734 | Build Index button: swift build to emit index store, then re-analyze for symbol  |
