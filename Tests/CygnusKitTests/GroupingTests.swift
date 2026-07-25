@@ -145,3 +145,17 @@ import Foundation
         #expect(scene.structuralRoles()["f"] == "Leaf")
     }
 }
+
+@Suite struct FolderGroupingTests {
+    private func file(_ path: String) -> GraphSnapshot.Node {
+        GraphSnapshot.Node(id: path, kind: "core:file",
+                           label: String(path.split(separator: "/").last ?? ""), path: path)
+    }
+    @Test func groupsByFullContainingDirectory() {
+        #expect(GraphScene.folder(of: file("Sources/CygnusKit/Sub/A.swift")) == "Sources/CygnusKit/Sub")
+        #expect(GraphScene.folder(of: file("App/B.swift")) == "App")
+        #expect(GraphScene.folder(of: file("README.md")) == "/")   // repo root
+        #expect(GraphScene.folder(of:
+            GraphSnapshot.Node(id: "m", kind: "core:module", label: "GRDB")) == "modules")
+    }
+}
