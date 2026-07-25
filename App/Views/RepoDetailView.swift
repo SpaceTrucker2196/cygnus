@@ -25,10 +25,8 @@ struct RepoDetailView: View {
                     }
                     .task(id: repoID) { store.selectRepoSection(store.selectedSection, for: repoID) }
             } else {
-                ContentUnavailableView(
-                    "No Repository Selected",
-                    systemImage: "point.3.connected.trianglepath.dotted",
-                    description: Text("Add a repository to run it as a dark-factory ops dashboard."))
+                // S7: no selection means the portfolio, not a blank.
+                PortfolioView()
             }
         }
     }
