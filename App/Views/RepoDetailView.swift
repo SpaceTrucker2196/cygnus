@@ -200,11 +200,24 @@ struct DependencyGraphView: View {
                 description: Text("Only project-internal imports are charted. " +
                                   "Try Filters → Show External Modules."))
         case .symbols:
-            ContentUnavailableView(
-                "No Symbol References",
-                systemImage: "arrow.triangle.branch",
-                description: Text("Declaration references come from a compiled index store. " +
-                                  "Build the repo (swift build), then re-analyze."))
+            ContentUnavailableView {
+                Label("No Symbol References", systemImage: "arrow.triangle.branch")
+            } description: {
+                Text("Declaration references come from a compiled index store.")
+            } actions: {
+                Button {
+                    if let id = store.selectedRepo { store.buildIndex(for: id) }
+                } label: {
+                    if store.indexBuilding {
+                        HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Building…") }
+                    } else {
+                        Label("Build Index", systemImage: "hammer")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.indexBuilding)
+                .help("Runs swift build to emit an index store, then re-analyzes")
+            }
         }
     }
 }

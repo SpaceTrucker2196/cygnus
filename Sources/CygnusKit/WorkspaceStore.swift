@@ -126,6 +126,27 @@ public final class WorkspaceStore {
         coverageRun = nil
     }
 
+    /// True while a `swift build` runs to produce the index store the
+    /// symbol reference graph needs.
+    public private(set) var indexBuilding = false
+
+    /// Build the repo so the compiler emits an index store, then
+    /// re-analyze so enrichment picks up the reference edges. SwiftPM
+    /// repos (`swift build` writes `.build/…/index/store`); best-effort
+    /// otherwise.
+    public func buildIndex(for id: UUID, tooling: any FactoryTooling = ProcessTooling()) {
+        guard !indexBuilding, let root = repoURL(id) else { return }
+        indexBuilding = true
+        Task { @MainActor [weak self] in
+            _ = try? await RepoAccess.withAccess(to: root) { root in
+                try await tooling.run(.swift, ["build"],
+                                      workingDirectory: root, timeout: .seconds(1800))
+            }
+            self?.indexBuilding = false
+            self?.analyze(id)   // re-index → enrichment reads the new store
+        }
+    }
+
     public func clearLiveCoverage() {
         cancelCoverageSuite()
         liveCoverage = nil
