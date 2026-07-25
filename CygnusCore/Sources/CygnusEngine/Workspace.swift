@@ -353,6 +353,26 @@ public actor CygnusWorkspace {
             pairKeys[key] = (ref.fromPath, ref.toPath)
         }
 
+        // Symbol-level: map each reference's endpoints to the
+        // innermost enclosing declaration (the caller/callee), and
+        // aggregate decl→decl pairs. The file→file edge is the coarse
+        // chart; this is the wiring the inspector walks.
+        let locator = try declarationLocator(repoID: repoID)
+        var symbolPairs: [String: Pair] = [:]
+        var symbolPairKeys: [String: (from: StableKey, to: StableKey)] = [:]
+        for (index, ref) in references.enumerated() {
+            guard let from = locator.enclosing(path: ref.fromPath, line: ref.line),
+                  let to = locator.enclosing(path: ref.toPath, line: ref.defLine),
+                  from != to
+            else { continue }
+            let key = "\(from.raw)→\(to.raw)"
+            var pair = symbolPairs[key] ?? Pair()
+            pair.count += 1
+            if pair.supportedBy.count < 200 { pair.supportedBy.append(ids[index]) }
+            symbolPairs[key] = pair
+            symbolPairKeys[key] = (from, to)
+        }
+
         var changes = RevisionChanges()
         var asserted = Set<String>()
         for (key, pair) in pairs.sorted(by: { $0.key < $1.key }) {
@@ -364,6 +384,15 @@ public actor CygnusWorkspace {
                 properties: ["core:referenceCount": .int(Int64(pair.count))],
                 supportedBy: pair.supportedBy))
             asserted.insert("\(key)#\(pair.count)")
+        }
+        var assertedSymbols = Set<String>()
+        for (key, pair) in symbolPairs.sorted(by: { $0.key < $1.key }) {
+            guard let (from, to) = symbolPairKeys[key] else { continue }
+            changes.relationships.append(RelationshipAssertion(
+                source: from, target: to, kind: .refersToSymbol, layer: .derived,
+                properties: ["core:referenceCount": .int(Int64(pair.count))],
+                supportedBy: pair.supportedBy))
+            assertedSymbols.insert("\(key)#\(pair.count)")
         }
 
         // Retract stale reference edges (identity includes the count,
@@ -384,9 +413,62 @@ public actor CygnusWorkspace {
             }
         }
 
+        // Retract stale symbol edges by (source, target, count),
+        // reading stable keys directly (both endpoints are decls in
+        // this repo).
+        for edge in try store.relationships(kind: .refersToSymbol, at: .current)
+        where edge.layer == .derived {
+            let endpoints = try store.entities(ids: [edge.source, edge.target], at: .current)
+            guard let source = endpoints.first(where: { $0.entity.id == edge.source })?.entity,
+                  let target = endpoints.first(where: { $0.entity.id == edge.target })?.entity,
+                  source.repository == repoID
+            else { continue }
+            let count: Int64? = if case .int(let value)? = edge.properties["core:referenceCount"] {
+                value
+            } else { nil }
+            let identity = "\(source.stableKey.raw)→\(target.stableKey.raw)#\(count.map(String.init) ?? "?")"
+            if !assertedSymbols.contains(identity) {
+                changes.retractRelationships.append(edge.id)
+            }
+        }
+
         guard !changes.relationships.isEmpty || !changes.retractRelationships.isEmpty
         else { return nil }
-        return try store.commit(changes, note: "enrich: \(pairs.count) reference edges")
+        return try store.commit(
+            changes,
+            note: "enrich: \(pairs.count) file + \(symbolPairs.count) symbol reference edges")
+    }
+
+    /// Maps a (path, line) to the innermost declaration entity there —
+    /// the enclosing symbol. Built once per enrichment from the
+    /// committed declaration entities and their source ranges.
+    struct DeclarationLocator {
+        struct Span { let start: Int; let end: Int; let key: StableKey }
+        let byPath: [String: [Span]]
+
+        func enclosing(path: String, line: Int) -> StableKey? {
+            guard let spans = byPath[path] else { return nil }
+            // Smallest span containing the line wins (innermost decl).
+            return spans
+                .filter { $0.start <= line && line <= $0.end }
+                .min { ($0.end - $0.start) < ($1.end - $1.start) }?
+                .key
+        }
+    }
+
+    private func declarationLocator(repoID: RepositoryID) throws -> DeclarationLocator {
+        let declKinds: [EntityKind] = [.type, .interface, .enumeration, .function, .variable]
+        var byPath: [String: [DeclarationLocator.Span]] = [:]
+        for kind in declKinds {
+            for resolved in try store.entities(kind: kind, at: .current)
+            where resolved.entity.repository == repoID {
+                guard let anchor = resolved.version.anchors.first,
+                      let range = anchor.range else { continue }
+                byPath[anchor.path, default: []].append(DeclarationLocator.Span(
+                    start: range.startLine, end: range.endLine, key: resolved.entity.stableKey))
+            }
+        }
+        return DeclarationLocator(byPath: byPath)
     }
 
     /// Strip a file stable key back to its repo-relative path.
