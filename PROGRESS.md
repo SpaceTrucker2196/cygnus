@@ -178,6 +178,35 @@
   Debug lesson: `sample <pid>` on the runaway named the exact frame;
   theory kept pointing at the wrong layer.
 
+## 2026-07-24 — v0.1.0, E6 close, crash root cause
+
+- **v0.1.0 tagged** (S6 complete): all suites + Debug/Release
+  warning-clean at tag time; notes in `docs/releases/v0.1.0.md`.
+- E6 essentially complete: derived import rollups
+  (`ImportRollupDeriver`), rename detection (exact blob + fuzzy
+  same-filename, `core:renamedFrom` breadcrumb, `↷N` in notes),
+  IndexStoreDB paper spike (`docs/spikes/indexstoredb.md` — adopt as
+  optional provider, **owner dependency audit pending**).
+- Sweep features: tests draw blue in the Flat view (nodes, edges,
+  stronger cloud); inspector gained a source-code pane (anchor line
+  highlighted, 512 KB cap); coverage-halo mode (llvm-cov artifact →
+  per-node ring, default on; `make test` now always writes coverage);
+  Fastlane detail card (lanes + Appfile + CI invocations).
+- **App crash saga resolved.** Four identical SIGSEGVs in GRDB
+  string binding. En route, two real bugs fixed (one workspace/pool
+  per directory — GRDB forbids two pools on one file; cooperative
+  cancellation in index) but the crashes continued. Headless
+  ASan/TSan harness (CYGNUS_STRESS_REPOS concurrent analyses) came
+  back clean — because the harness never ran subprocess tooling. TSan
+  on the **running app** caught it in every session: ProcessRunner
+  assigned its timeout task outside the lock after process.run(),
+  racing the termination handler of fast-exiting children (every
+  errored gh call); the torn reference corrupted heap blocks that
+  crashed later in unrelated GRDB binds. Fix: install-or-cancel under
+  the lock. Verified by absence: zero TSan reports post-fix.
+  Debug lesson repeated: instrument the real thing (TSan the GUI
+  app), not just the harness that's convenient.
+
 ## 2026-07-20
 
 - First real GUI run (Jeff): analysis + Flat view worked on an 846-
