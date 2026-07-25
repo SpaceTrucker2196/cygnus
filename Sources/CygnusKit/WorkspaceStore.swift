@@ -33,6 +33,7 @@ public final class WorkspaceStore {
     /// reference enrichment (built with an index store).
     public enum GraphContent: String, CaseIterable, Sendable {
         case code = "Code"        // file/module dependency graph
+        case callers = "Callers"  // class → class caller graph
         case symbols = "Symbols"  // decl → decl reference graph
     }
     public var graphContent: GraphContent = .code

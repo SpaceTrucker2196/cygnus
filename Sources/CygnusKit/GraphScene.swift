@@ -65,6 +65,49 @@ public struct GraphScene: Sendable, Equatable {
         return GraphScene(nodes: nodes, edges: refs)
     }
 
+    /// The caller graph at type granularity: **which class uses which
+    /// class**. Each symbol reference (decl → decl) is lifted to the
+    /// types that enclose its endpoints and aggregated, so a class
+    /// links to every class it calls into — the who-calls-whom wiring,
+    /// not import dependencies. Needs an index build; empty otherwise.
+    public static func callers(from snapshot: GraphSnapshot) -> GraphScene {
+        let byID = Dictionary(uniqueKeysWithValues: snapshot.nodes.map { ($0.id, $0) })
+        // Child decl → its declaring parent (declares edges point
+        // parent → child).
+        var parent: [String: String] = [:]
+        for edge in snapshot.edges where edge.kind == "core:declares" {
+            parent[edge.to] = edge.from
+        }
+        func isType(_ node: GraphSnapshot.Node) -> Bool {
+            node.kind.hasSuffix(":type") || node.kind.hasSuffix(":interface")
+                || node.kind.hasSuffix(":enumeration")
+        }
+        // Walk up to the nearest enclosing type declaration.
+        func enclosingType(_ id: String) -> String? {
+            var current: String? = id
+            var guardrail = 0
+            while let node = current.flatMap({ byID[$0] }), guardrail < 64 {
+                if isType(node) { return node.id }
+                current = parent[node.id]; guardrail += 1
+            }
+            return nil
+        }
+        // Aggregate type → type with summed weight.
+        var weights: [String: Int] = [:]      // "from\u{1}to" → weight
+        for edge in snapshot.edges where edge.kind == "core:refersToSymbol" {
+            guard let from = enclosingType(edge.from),
+                  let to = enclosingType(edge.to), from != to else { continue }
+            weights["\(from)\u{1}\(to)", default: 0] += edge.weight
+        }
+        let edges = weights.map { key, weight -> GraphSnapshot.Edge in
+            let parts = key.split(separator: "\u{1}")
+            return GraphSnapshot.Edge(from: String(parts[0]), to: String(parts[1]),
+                                      kind: "core:refersToSymbol", weight: weight)
+        }
+        let ids = Set(edges.flatMap { [$0.from, $0.to] })
+        return GraphScene(nodes: snapshot.nodes.filter { ids.contains($0.id) }, edges: edges)
+    }
+
     // MARK: - Pattern analysis
 
     /// Edges that lie on a dependency cycle — the first architecture

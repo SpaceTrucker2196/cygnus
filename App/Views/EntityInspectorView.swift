@@ -47,6 +47,7 @@ struct EntityInspectorView: View {
                             }
                         }
                     }
+                    FunctionsSection(node: node, index: index)
                     EdgeSection(title: "Outgoing",
                                 edges: index.outgoing[node.id] ?? [],
                                 endpoint: \.to, index: index)
@@ -94,6 +95,59 @@ struct EntityInspectorView: View {
     private func isTestClass(_ node: GraphSnapshot.Node) -> Bool {
         node.kind.hasSuffix(":type") && GraphScene.isTest(node)
             && (node.label.hasSuffix("Tests") || node.label.hasSuffix("Test"))
+    }
+}
+
+/// The selected node's member functions, listed with their coverage
+/// (when known) and selectable — the "functions panel" for a class.
+struct FunctionsSection: View {
+    @Environment(WorkspaceStore.self) private var store
+    let node: GraphSnapshot.Node
+    let index: SnapshotIndex
+
+    private var functions: [GraphSnapshot.Node] {
+        (index.outgoing[node.id] ?? [])
+            .filter { $0.kind == "core:declares" }
+            .compactMap { index.byID[$0.to] }
+            .filter { $0.kind.hasSuffix(":function") }
+            .sorted { ($0.line ?? 0) < ($1.line ?? 0) }
+    }
+
+    var body: some View {
+        let functions = functions
+        if !functions.isEmpty {
+            Section("Functions (\(functions.count))") {
+                ForEach(functions) { function in
+                    Button {
+                        store.selectedNode = function.id
+                    } label: {
+                        HStack(spacing: 8) {
+                            coverageDot(for: function)
+                            Text(function.label)
+                                .font(.callout.monospaced())
+                                .lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            if let line = function.line {
+                                Text("\(line)").font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func coverageDot(for function: GraphSnapshot.Node) -> some View {
+        let report = store.liveCoverage ?? store.attributedCoverage?.report
+        if let fraction = report?.functionFraction(path: function.path, line: function.line) {
+            Circle()
+                .fill(Color(hue: 0.33 * fraction, saturation: 0.85, brightness: 0.85))
+                .frame(width: 8, height: 8)
+                .help("\(Int(fraction * 100))% covered")
+        } else {
+            Image(systemName: "function").font(.caption2).foregroundStyle(.secondary)
+        }
     }
 }
 

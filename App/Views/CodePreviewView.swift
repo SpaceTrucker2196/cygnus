@@ -10,6 +10,15 @@ struct CodePreviewView: View {
     /// 1-based line to highlight (the node's source anchor).
     let highlightLine: Int?
 
+    private var language: String? {
+        switch (preview.path as NSString).pathExtension.lowercased() {
+        case "swift": "swift"
+        case "py": "python"
+        case "c", "h": "c"
+        default: nil
+        }
+    }
+
     var body: some View {
         // GeometryReader pins the content's minimum width to the
         // pane, so rows (and the highlight band) stretch with it while
@@ -25,9 +34,9 @@ struct CodePreviewView: View {
                                     .font(.system(size: 11, design: .monospaced))
                                     .foregroundStyle(.tertiary)
                                     .frame(width: 40, alignment: .trailing)
-                                Text(line.isEmpty ? " " : line)
+                                Text(SyntaxHighlighter.highlight(line, language: language))
                                     .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(number == highlightLine ? .primary : .secondary)
+                                    .opacity(number == highlightLine ? 1 : 0.85)
                             }
                             .padding(.vertical, 0.5)
                             .frame(maxWidth: .infinity, alignment: .leading)
