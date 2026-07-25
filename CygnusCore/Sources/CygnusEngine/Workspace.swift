@@ -86,6 +86,17 @@ public actor CygnusWorkspace {
         try store.repositories()
     }
 
+    /// Run a read against the store **on the actor**, so it's
+    /// serialized with `index()` writes rather than racing them from
+    /// another thread. All store access for one workspace must go
+    /// through here (or the actor's own methods) — the store is shared
+    /// across every repo in a workspace. The projection type lives in
+    /// the app layer, so it's threaded in as a closure.
+    public func withStore<T: Sendable>(
+        _ body: @Sendable (SQLiteGraphStore) throws -> T) rethrows -> T {
+        try body(store)
+    }
+
     // MARK: - Indexing
 
     /// Snapshot the repository and commit one revision containing the

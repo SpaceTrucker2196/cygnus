@@ -79,8 +79,13 @@ public struct WorkspaceGraphEngine: GraphEngine {
                     continuation.yield(.partialCounts(entities: result.entityCount,
                                                       edges: result.relationshipCount))
                     continuation.yield(.phase("projecting"))
-                    let snapshot = try Self.snapshot(from: await workspace.store,
-                                                     repository: repoID)
+                    // Project on the actor so the read is serialized
+                    // with index() writes — the store is shared across
+                    // all repos, and reading it off-actor raced writes
+                    // from a concurrent analysis (issue #2/#3).
+                    let snapshot = try await workspace.withStore { store in
+                        try Self.snapshot(from: store, repository: repoID)
+                    }
                     continuation.yield(.finished(snapshot))
                     continuation.finish()
                 } catch {
