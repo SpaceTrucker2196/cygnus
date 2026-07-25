@@ -1,62 +1,85 @@
-# Flat graph view
+# Flat graph view — the pattern visualizer
 
-The 2D Canvas renderer over the dependency scene. A disposable
-projection of the snapshot — nothing here feeds back into the graph.
+The 2D Canvas renderer. A disposable projection of the snapshot,
+built to answer architecture questions at a glance: *what depends on
+what, what's cyclic, what's tested, what does changing this touch.*
+Nothing here feeds back into the graph.
+
+## Visual grammar (all at once)
+
+| Encoding | Means |
+|---|---|
+| node **color** | its group / role (see Grouping) |
+| node **size** | connections (degree) — hubs are large |
+| **halo** arc | test line-coverage, red → green, live |
+| tinted **hull** | the group region, labeled |
+| **amber** edge | on a dependency cycle |
+| **arrowhead** | dependency direction (focus / cycle edges) |
+| dimmed | outside the focused node's blast radius |
+
+The legend (bottom-left) is this key.
+
+## Content
+
+Top bar **Content** picker (Flat only):
+
+- **Code** — the file/module dependency graph (imports + file→file
+  references).
+- **Symbols** — the declaration → declaration reference graph
+  (`core:refersToSymbol`, compiler-resolved). Needs an index build;
+  empty state says so.
 
 ## Grouping
 
-A segmented control (top bar) picks how nodes cluster spatially:
+How nodes cluster spatially. First four are structural; the map is
+computed once and drives color, hulls, and the layout anchors alike.
 
-- **Area** *(default)* — project areas: top-level directory, one level
-  deeper under source/test umbrella folders (`Sources/CygnusKit`).
-- **Layer** — three bands: **Production**, **Tests**, **Modules**
-  (imported targets). Tests are classified by directory
-  (`Tests/`, `tests/`, `__tests__`, `UITests`, `spec/`…) or filename
-  convention (`FooTests.swift`, `test_foo.py`, `foo_test.c`,
-  `foo.spec.ts`).
-- **Pattern** — architectural roles read from naming conventions
-  (MVVM / MVC): **Models, Views, ViewModels, Controllers, Services,
-  Stores**, plus Tests and Modules. This is convention *reading*
-  (observable name/path facts), not architecture inference — real
-  pattern detection belongs to the engine's derived layer.
-- **None** — pure force layout; color still follows Area.
+- **Area** *(default)* — project areas (`Sources/CygnusKit`).
+- **Layer** — **Production** / **Tests** / **Modules**.
+- **Pattern** — MVVM/MVC roles read from *naming* (Models, Views,
+  ViewModels, Controllers, Services, Stores). Convention reading.
+- **Role** — architectural role *inferred from structure*, name-free:
+  **Core** (depended-upon, depends on little), **Hub** (both),
+  **Entry** (depends on much, depended-upon by little), **Leaf**
+  (barely connected). Computed from fan-in/fan-out over dependency
+  edges. Corroborates or contradicts Pattern.
+- **None** — pure force layout; color falls back to Area.
 
-Grouping is projection state: it never touches the graph store.
+Anchors depend only on sorted cluster names, so groups keep their
+directions across re-analyses (software-cartography stability).
 
-## Layout
+## Patterns surfaced
 
-Fruchterman–Reingold with grid-bucketed repulsion (LayoutEngine).
-Grouping adds a fixed **anchor per cluster** on a ring; members are
-pulled toward their anchor (`clusterPull`), everything else keeps
-plain gravity. Anchors depend only on sorted cluster names, so the
-same groups always land in the same directions — spatial memory
-survives re-analysis, relaunch, and grouping toggles (the software-
-cartography stability principle; warm-start covers incremental
-growth).
+- **Cycles** — iterative Tarjan SCC (stack-safe past 20k nodes) marks
+  every edge on a dependency cycle; they draw amber always. The
+  **Cycles** toggle (with a count) isolates them by dimming the rest.
+- **Focus / blast radius** — click a node: its neighborhood
+  (dependencies + dependents) stays lit, everything else dims, and
+  incident edges gain direction arrows. Click empty space to clear.
 
-## Regions
+## Coverage
 
-Each cluster draws a padded convex-hull blob (screen-space hull,
-wide round-join stroke + fill at 10% opacity) with the cluster name
-above the topmost point. Background tint + label reads better at low
-zoom than outlines alone (Graphviz cluster / CodeSee convention).
-Pinned colors: Tests are always gray (desaturated by convention),
-imported modules always purple; other clusters take stable sorted
-hues.
+Halos show test line-coverage; on by default (no data → no halo).
+Source precedence: **live run** > single **attributed test** (from
+the inspector) > loaded artifact (newest `swift test
+--enable-code-coverage` / fastlane `scan` export).
+
+**Run Coverage** runs the repo's test classes one at a time and
+unions results into growing halos — coverage fills in on the 2D view
+in real time, with per-class progress. The union is a monotonic lower
+bound (per-class max), so it only ever grows.
 
 ## Established practice this follows
 
-- Grouping as a user-switchable dimension over the same graph
-  (Sourcetrail's namespace/file grouping toggle).
-- Tests and externals segregated, not interleaved (pydeps
-  `--cluster`, madge's exclude-by-default).
-- Deterministic, stability-first positioning (Kuhn's software
-  cartography; ELK "interactive" relayout).
+- Grouping as a switchable dimension (Sourcetrail); tests/externals
+  segregated (pydeps/madge); cycle-finding as the first review lens
+  (every DSM tool); focus+context blast radius (mental-map
+  literature); stability-first anchors (Kuhn).
 
-## Candidates deliberately deferred
+## Deliberately deferred
 
-- Collapse-cluster-to-super-node with aggregated edge counts
-  (Sourcetrail bundle nodes) — the LOD answer when scenes exceed
-  ~5k nodes.
-- Non-convex hulls (Bubble Sets) if convex regions overlap badly.
-- DSM projection as the scale escape hatch (NDepend / IntelliJ).
+- Cluster collapse → super-node with aggregated edges (LOD past ~5k).
+- Edge weight by reference count as thickness (data exists on
+  reference edges; not yet threaded to `GraphSnapshot.Edge`).
+- Bubble Sets hulls when convex regions overlap badly.
+- DSM projection as the scale escape hatch.
