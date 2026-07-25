@@ -19,6 +19,18 @@ public struct CoverageReport: Sendable, Equatable {
     public func fraction(forPath path: String?) -> Double? {
         path.flatMap { byPath[$0] }
     }
+
+    /// Union with another report: per file, the higher coverage. A
+    /// lower bound on true cumulative coverage (line-level union would
+    /// be exact), and monotonic — so accumulating across test classes
+    /// only ever grows, which is what a live run wants to show.
+    public func merged(with other: CoverageReport) -> CoverageReport {
+        var byPath = byPath
+        for (path, fraction) in other.byPath {
+            byPath[path] = max(byPath[path] ?? 0, fraction)
+        }
+        return CoverageReport(byPath: byPath, source: other.source)
+    }
 }
 
 public enum CoverageProvider {

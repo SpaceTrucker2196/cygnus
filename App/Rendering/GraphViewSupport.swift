@@ -53,9 +53,11 @@ enum GraphPalette {
     }
 }
 
-/// What node size means, what colors mean. Overlaid on the graph view.
+/// The visual grammar key: colors mean groups, and the encoding
+/// legend explains size / halo / cycles. Overlaid on the graph view.
 struct GraphLegendView: View {
     let scene: GraphScene
+    var cycleCount: Int = 0
     let colors: [String: Color]
 
     var body: some View {
@@ -67,15 +69,42 @@ struct GraphLegendView: View {
                         .font(.caption)
                 }
             }
-            Divider().frame(width: 130)
-            HStack(spacing: 6) {
-                Circle().stroke(.secondary).frame(width: 12, height: 12)
-                Text("size = import count").font(.caption)
+            Divider().frame(width: 150)
+            legendRow(symbol: circleSizes, "size = connections (hubs are big)")
+            legendRow(symbol: coverageArc, "halo = test coverage")
+            if cycleCount > 0 {
+                legendRow(symbol: AnyView(
+                    Capsule().fill(.orange).frame(width: 14, height: 3)),
+                    "amber = dependency cycle")
             }
+            legendRow(symbol: AnyView(
+                Image(systemName: "cursorarrow.rays").font(.caption2).foregroundStyle(Color.accentColor)),
+                "click a node = its blast radius")
         }
         .padding(9)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .padding(10)
+    }
+
+    private func legendRow(symbol: some View, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            symbol.frame(width: 16, alignment: .center)
+            Text(text).font(.caption)
+        }
+    }
+
+    private var circleSizes: AnyView {
+        AnyView(HStack(spacing: 2) {
+            Circle().stroke(.secondary).frame(width: 6, height: 6)
+            Circle().stroke(.secondary).frame(width: 12, height: 12)
+        })
+    }
+    private var coverageArc: AnyView {
+        AnyView(Circle()
+            .trim(from: 0, to: 0.7)
+            .stroke(.green, lineWidth: 2)
+            .rotationEffect(.degrees(-90))
+            .frame(width: 12, height: 12))
     }
 }
 
@@ -83,7 +112,7 @@ enum LabelMode: String, CaseIterable {
     case auto = "Auto", on = "On", off = "Off"
 }
 
-/// Zoom / label / grouping / coverage controls for the graph view.
+/// Zoom / label / grouping / pattern controls for the graph view.
 struct GraphControlBar: View {
     @Binding var zoom: CGFloat
     @Binding var labelMode: LabelMode
@@ -91,6 +120,8 @@ struct GraphControlBar: View {
     @Binding var legendShown: Bool
     @Binding var grouping: GraphScene.Grouping
     @Binding var coverageMode: Bool
+    @Binding var cyclesOnly: Bool
+    var cycleCount: Int = 0
 
     var body: some View {
         HStack(spacing: 14) {
@@ -122,7 +153,14 @@ struct GraphControlBar: View {
                 .toggleStyle(.checkbox)
             Toggle("Coverage", isOn: $coverageMode)
                 .toggleStyle(.checkbox)
-                .help("Halo per node showing test line-coverage (from the newest swift test --enable-code-coverage artifact)")
+                .help("Halo per node showing test line-coverage, live as the suite runs")
+            Toggle(isOn: $cyclesOnly) {
+                Label("Cycles\(cycleCount > 0 ? " (\(cycleCount))" : "")",
+                      systemImage: "arrow.triangle.capsulepath")
+            }
+            .toggleStyle(.checkbox)
+            .disabled(cycleCount == 0)
+            .help("Dependency cycles draw amber always; toggle to isolate them")
         }
         .controlSize(.small)
         .padding(.horizontal, 12)

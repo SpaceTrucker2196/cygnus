@@ -63,6 +63,70 @@ public final class WorkspaceStore {
     public var attributedCoverage: AttributedCoverage?
     public private(set) var attributingTest: String?
 
+    /// Coverage accumulated live while the suite runs — halos grow as
+    /// each test class completes. Takes precedence over the loaded
+    /// artifact while a run is active.
+    public private(set) var liveCoverage: CoverageReport?
+    public private(set) var coverageRun: CoverageRunProgress?
+    private var coverageRunTask: Task<Void, Never>?
+
+    public struct CoverageRunProgress: Equatable, Sendable {
+        public let done: Int
+        public let total: Int
+        public let current: String
+        public var isFinished: Bool { done >= total }
+    }
+
+    /// Run the repo's test classes one at a time with coverage,
+    /// unioning results into `liveCoverage` after each so the 2D
+    /// halos fill in as the suite runs. Test classes are read from the
+    /// analyzed graph. Cancellable; a second call is ignored while one
+    /// runs.
+    public func runCoverageSuite(for id: UUID) {
+        guard coverageRunTask == nil, let index = indices[id] else { return }
+        let classes = index.snapshot.nodes
+            .filter { $0.kind.hasSuffix(":type")
+                && GraphScene.isTest($0)
+                && ($0.label.hasSuffix("Tests") || $0.label.hasSuffix("Test")) }
+            .map(\.label)
+        let ordered = Array(Set(classes)).sorted()
+        guard !ordered.isEmpty else { return }
+
+        liveCoverage = nil
+        coverageRun = CoverageRunProgress(done: 0, total: ordered.count, current: ordered[0])
+        coverageRunTask = Task { @MainActor [weak self] in
+            defer {
+                self?.coverageRunTask = nil
+                self?.coverageRun = nil
+            }
+            var accumulated = CoverageReport(byPath: [:], source: "live")
+            for (i, testClass) in ordered.enumerated() {
+                if Task.isCancelled { return }
+                self?.coverageRun = CoverageRunProgress(
+                    done: i, total: ordered.count, current: testClass)
+                guard let self,
+                      let attributed = try? await self.attributeCoverage(
+                        testClass: testClass, for: id)
+                else { continue }
+                accumulated = accumulated.merged(with: attributed.report)
+                self.liveCoverage = accumulated
+            }
+            self?.coverageRun = CoverageRunProgress(
+                done: ordered.count, total: ordered.count, current: "done")
+        }
+    }
+
+    public func cancelCoverageSuite() {
+        coverageRunTask?.cancel()
+        coverageRunTask = nil
+        coverageRun = nil
+    }
+
+    public func clearLiveCoverage() {
+        cancelCoverageSuite()
+        liveCoverage = nil
+    }
+
     /// Run one test class in isolation and switch halos to its
     /// coverage. User-initiated from the inspector.
     public func attributeCoverage(testClass: String) {

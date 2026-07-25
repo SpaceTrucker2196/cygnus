@@ -67,6 +67,16 @@ public struct SnapshotIndex: Sendable {
             .compactMap { build($0.id) }
     }
 
+    /// The focus set for a node: itself plus every direct neighbor
+    /// (dependencies and dependents). Drives the graph's blast-radius
+    /// highlight — "what touches this."
+    public func neighborhood(of id: String) -> Set<String> {
+        var result: Set<String> = [id]
+        for edge in outgoing[id] ?? [] { result.insert(edge.to) }
+        for edge in incoming[id] ?? [] { result.insert(edge.from) }
+        return result
+    }
+
     public func search(_ text: String, limit: Int = 50) -> [GraphSnapshot.Node] {
         let query = text.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return [] }
