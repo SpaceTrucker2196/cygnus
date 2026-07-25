@@ -40,3 +40,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 44aa088 | 2026-07-25T17:58:06Z | claude-opus-4-8 | 463 | 8254 | 5149580 | 8998 | 2.8734 | Build Index button: swift build to emit index store, then re-analyze for symbol  |
 | 10f3069 | 2026-07-25T18:00:45Z | claude-opus-4-8 | 444 | 13709 | 10419672 | 14801 | 5.7028 | Expand mode: function satellites orbiting each node, coverage-colored and select |
 | 3f193cd | 2026-07-25T18:03:04Z | claude-opus-4-8 | 811 | 10009 | 9222628 | 8027 | 4.9459 | Edge thickness by reference weight (core:referenceCount → GraphSnapshot.Edge.wei |
+| 50f3c3f | 2026-07-25T18:09:13Z | claude-opus-4-8 | 1547 | 30245 | 16702819 | 32788 | 9.4431 | Fix Build Index: enrich on source no-op so symbols appear after a build; idempot |
