@@ -13,7 +13,16 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
     }
 
     public static func onDisk(at url: URL) throws -> SQLiteGraphStore {
-        try SQLiteGraphStore(db: DatabasePool(path: url.path))
+        // DatabaseQueue, not DatabasePool: every access runs on one
+        // serialized connection, so there is no reader-thread pool.
+        // The recurring app crash was an EXC_BAD_ACCESS on a
+        // `GRDB.DatabasePool.reader` thread that only ever reproduced
+        // in the GUI's interleaved access pattern (never headless,
+        // never in tests — tests use the in-memory DatabaseQueue and
+        // have never crashed). Serializing on a queue removes the
+        // pooled readers entirely; concurrent reads aren't needed here
+        // (analysis is effectively one-at-a-time). See issue #2.
+        try SQLiteGraphStore(db: DatabaseQueue(path: url.path))
     }
 
     private init(db: any DatabaseWriter) throws {
