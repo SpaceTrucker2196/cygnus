@@ -23,13 +23,15 @@ build: generate
 # All tests: engine package, app-side kit package, Xcode unit tests.
 test: test-engine test-kit test-app
 
-# Engine tests. No Xcode required.
+# Engine tests. No Xcode required. Coverage always on — the app's
+# coverage-halo mode reads the resulting codecov artifact.
 test-engine:
-	cd CygnusCore && $(SWIFT) test
+	cd CygnusCore && $(SWIFT) test --enable-code-coverage
 
-# App-side adapter package tests. No Xcode required.
+# App-side adapter package tests. No Xcode required. Coverage always
+# on, same reason.
 test-kit:
-	$(SWIFT) test
+	$(SWIFT) test --enable-code-coverage
 
 # Xcode unit tests (requires xcodegen + Xcode).
 test-app: generate
