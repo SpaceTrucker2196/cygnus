@@ -16,6 +16,16 @@ public protocol FactoryProvider: Sendable {
     func metricsRows(repoAt url: URL) async throws -> [MetricsRow]
     func ledgerRows(repoAt url: URL) async throws -> [LedgerRow]
     func convergePipeline(repoAt url: URL) async throws -> ConvergePipeline?
+
+    // MARK: Issue actions (production-order control surface)
+
+    /// Open a new issue and return it (fetched back with `viewIssue`).
+    func createIssue(remote: RepoRemote, title: String, body: String,
+                     labels: [String]) async throws -> Issue
+    /// Add a comment; returns the issue re-fetched with the comment.
+    func commentIssue(remote: RepoRemote, number: Int, body: String) async throws -> Issue
+    /// Close or reopen; returns the issue re-fetched in its new state.
+    func setIssueState(remote: RepoRemote, number: Int, closed: Bool) async throws -> Issue
 }
 
 /// Deterministic provider for previews and tests.
@@ -61,4 +71,30 @@ public struct FixtureFactoryProvider: FactoryProvider {
     public func metricsRows(repoAt url: URL) async throws -> [MetricsRow] { metrics }
     public func ledgerRows(repoAt url: URL) async throws -> [LedgerRow] { ledger }
     public func convergePipeline(repoAt url: URL) async throws -> ConvergePipeline? { converge }
+
+    public func createIssue(remote: RepoRemote, title: String, body: String,
+                            labels: [String]) async throws -> Issue {
+        Issue(number: (issues.map(\.number).max() ?? 0) + 1, title: title, state: .open,
+              labels: labels.map { IssueLabel(name: $0, color: "ededed") },
+              body: body, author: "you", createdAt: .distantPast, closedAt: nil,
+              milestone: nil, comments: [])
+    }
+    public func commentIssue(remote: RepoRemote, number: Int, body: String) async throws -> Issue {
+        let issue = issues.first { $0.number == number } ?? Issue.sample
+        return Issue(number: issue.number, title: issue.title, state: issue.state,
+                     labels: issue.labels, body: issue.body, author: issue.author,
+                     createdAt: issue.createdAt, closedAt: issue.closedAt,
+                     milestone: issue.milestone,
+                     comments: issue.comments + [IssueComment(
+                        id: issue.comments.count, author: "you", body: body,
+                        createdAt: .distantPast)])
+    }
+    public func setIssueState(remote: RepoRemote, number: Int, closed: Bool) async throws -> Issue {
+        let issue = issues.first { $0.number == number } ?? Issue.sample
+        return Issue(number: issue.number, title: issue.title,
+                     state: closed ? .closed : .open, labels: issue.labels,
+                     body: issue.body, author: issue.author, createdAt: issue.createdAt,
+                     closedAt: closed ? .distantPast : nil, milestone: issue.milestone,
+                     comments: issue.comments)
+    }
 }

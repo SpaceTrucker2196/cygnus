@@ -151,6 +151,49 @@ public struct GitHubFactoryProvider: FactoryProvider {
         }
     }
 
+    // MARK: - Issue actions (writes)
+
+    public func createIssue(remote: RepoRemote, title: String, body: String,
+                            labels: [String]) async throws -> Issue {
+        var args = ["issue", "create", "--repo", remote.slug,
+                    "--title", title, "--body", body]
+        for label in labels { args += ["--label", label] }
+        // `gh issue create` prints the new issue URL; the trailing path
+        // component is its number.
+        let result = try await tooling.runChecked(.gh, args,
+                                                  workingDirectory: nil, timeout: timeout)
+        let number = Self.issueNumber(fromURL: result.stdoutString)
+        guard let number else {
+            throw ToolingError.nonZeroExit(.gh, code: 0,
+                stderr: "created issue but couldn't parse its number from: \(result.stdoutString)")
+        }
+        return try await viewIssue(remote: remote, number: number)
+    }
+
+    public func commentIssue(remote: RepoRemote, number: Int, body: String) async throws -> Issue {
+        _ = try await tooling.runChecked(.gh, [
+            "issue", "comment", String(number), "--repo", remote.slug, "--body", body,
+        ], workingDirectory: nil, timeout: timeout)
+        return try await viewIssue(remote: remote, number: number)
+    }
+
+    public func setIssueState(remote: RepoRemote, number: Int, closed: Bool) async throws -> Issue {
+        _ = try await tooling.runChecked(.gh, [
+            "issue", closed ? "close" : "reopen", String(number), "--repo", remote.slug,
+        ], workingDirectory: nil, timeout: timeout)
+        return try await viewIssue(remote: remote, number: number)
+    }
+
+    /// Last path component of a github.com issue URL, as an Int.
+    static func issueNumber(fromURL text: String) -> Int? {
+        text.split(whereSeparator: \.isWhitespace)
+            .compactMap { line -> Int? in
+                guard line.contains("github.com") else { return nil }
+                return line.split(separator: "/").last.flatMap { Int($0) }
+            }
+            .first
+    }
+
     // MARK: - git + files
 
     public func recentCommits(repoAt url: URL, limit: Int) async throws -> [CommitInfo] {
