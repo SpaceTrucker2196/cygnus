@@ -74,7 +74,8 @@ final class PartialSnapshotBuilder: @unchecked Sendable {
                 id: assertion.stableKey.raw,
                 kind: assertion.kind.rawValue,
                 label: assertion.name,
-                path: assertion.anchors.first?.path)
+                path: assertion.anchors.first?.path,
+                line: assertion.anchors.first?.range?.startLine)
         }
         let edges = changes.relationships.map { assertion in
             GraphSnapshot.Edge(from: assertion.source.raw,
