@@ -59,6 +59,84 @@ public actor IndexStoreReader {
         db.occurrences(ofUSR: usr, roles: [.reference, .call]).map(Self.convert)
     }
 
+    /// One cross-file reference: `fromPath` (repo-relative) uses
+    /// `symbolName`, which is defined in `toPath` (repo-relative).
+    public struct FileReference: Sendable, Equatable {
+        public let fromPath: String
+        public let toPath: String
+        public let symbolUSR: String
+        public let symbolName: String
+        public let line: Int
+        public let column: Int
+    }
+
+    /// Symbol-name sweep bound — a runaway store must not turn
+    /// enrichment into the memory story again.
+    public static let symbolNameCap = 50_000
+
+    /// All cross-file references between files under `repoRoot`:
+    /// for every symbol defined in the repo, each reference from a
+    /// *different* repo file. Same-file references are structure, not
+    /// architecture, and are skipped.
+    public func fileReferences(repoRoot: URL) -> [FileReference] {
+        let rootPath = repoRoot.standardizedFileURL.path + "/"
+        func relative(_ path: String) -> String? {
+            let standardized = URL(fileURLWithPath: path).standardizedFileURL.path
+            guard standardized.hasPrefix(rootPath) else { return nil }
+            let rel = String(standardized.dropFirst(rootPath.count))
+            return rel.hasPrefix(".build/") ? nil : rel
+        }
+
+        var result: [FileReference] = []
+        var seenUSRs = Set<String>()
+        for name in db.allSymbolNames().prefix(Self.symbolNameCap) {
+            for canonical in db.canonicalOccurrences(ofName: name) {
+                let usr = canonical.symbol.usr
+                guard seenUSRs.insert(usr).inserted,
+                      canonical.roles.contains(.definition),
+                      let definedIn = relative(canonical.location.path)
+                else { continue }
+                for occurrence in db.occurrences(ofUSR: usr, roles: [.reference, .call]) {
+                    guard let fromPath = relative(occurrence.location.path),
+                          fromPath != definedIn
+                    else { continue }
+                    result.append(FileReference(
+                        fromPath: fromPath, toPath: definedIn,
+                        symbolUSR: usr, symbolName: canonical.symbol.name,
+                        line: occurrence.location.line,
+                        column: occurrence.location.utf8Column))
+                }
+            }
+        }
+        return result
+    }
+
+    /// The SPM index store for a package checkout, if a build has
+    /// produced one. Root package and first-level nested packages.
+    public static func storePath(under root: URL) -> String? {
+        let fm = FileManager.default
+        var packageDirs = [root]
+        if let entries = try? fm.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]) {
+            packageDirs += entries.filter {
+                (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+        }
+        for package in packageDirs {
+            let build = package.appendingPathComponent(".build")
+            guard let triples = try? fm.contentsOfDirectory(atPath: build.path) else { continue }
+            for triple in triples.sorted() {
+                let store = build.appendingPathComponent("\(triple)/debug/index/store")
+                if fm.fileExists(atPath: store.appendingPathComponent("v5").path)
+                    || fm.fileExists(atPath: store.path) {
+                    return store.path
+                }
+            }
+        }
+        return nil
+    }
+
     private static func convert(_ occurrence: SymbolOccurrence) -> Occurrence {
         Occurrence(
             usr: occurrence.symbol.usr,

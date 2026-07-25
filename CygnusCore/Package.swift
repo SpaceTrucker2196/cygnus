@@ -83,7 +83,8 @@ let package = Package(
         // Facade the app-side kit and the CLI consume.
         .target(name: "CygnusEngine", dependencies: [
             "CygnusGraph", "CygnusStore", "CygnusProviders", "CygnusObservation",
-            "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusDerive", "CygnusQuery",
+            "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusExtractorIndex",
+            "CygnusDerive", "CygnusQuery",
         ]),
 
         .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusGraph"]),

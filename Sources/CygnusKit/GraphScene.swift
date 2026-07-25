@@ -41,12 +41,17 @@ public struct GraphScene: Sendable, Equatable {
             return showExternal
         }
 
-        let imports = snapshot.edges.filter {
-            $0.kind == "core:imports" && charted($0.from) && charted($0.to)
+        // Imports (file → module) plus compiler-resolved references
+        // (file → file, index-store enrichment) — the latter is the
+        // real wiring between files, present when the repo has been
+        // built with an index.
+        let edges = snapshot.edges.filter {
+            ($0.kind == "core:imports" || $0.kind == "core:references")
+                && charted($0.from) && charted($0.to)
         }
-        let ids = Set(imports.flatMap { [$0.from, $0.to] })
+        let ids = Set(edges.flatMap { [$0.from, $0.to] })
         let nodes = snapshot.nodes.filter { ids.contains($0.id) }
-        return GraphScene(nodes: nodes, edges: imports)
+        return GraphScene(nodes: nodes, edges: edges)
     }
 
     /// Grouping key for color coding: the project area a file lives
