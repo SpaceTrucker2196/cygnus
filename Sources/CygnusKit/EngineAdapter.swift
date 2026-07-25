@@ -131,7 +131,11 @@ public struct WorkspaceGraphEngine: GraphEngine {
         var edges: [GraphSnapshot.Edge] = []
         for edge in keptEdges {
             guard let from = keyByID[edge.source], let to = keyByID[edge.target] else { continue }
-            edges.append(GraphSnapshot.Edge(from: from, to: to, kind: edge.kind.rawValue))
+            let weight: Int = if case .int(let n)? = edge.properties["core:referenceCount"] {
+                Int(n)
+            } else { 1 }
+            edges.append(GraphSnapshot.Edge(from: from, to: to,
+                                            kind: edge.kind.rawValue, weight: weight))
         }
 
         return GraphSnapshot(nodes: nodes, edges: edges)

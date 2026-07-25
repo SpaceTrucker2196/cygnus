@@ -45,10 +45,15 @@ public struct GraphSnapshot: Sendable, Equatable {
         public let from: String
         public let to: String
         public let kind: String
-        public init(from: String, to: String, kind: String) {
+        /// How many underlying references this edge aggregates (1 for
+        /// structural edges; the reference count for enrichment
+        /// edges). Renderers scale thickness by it.
+        public let weight: Int
+        public init(from: String, to: String, kind: String, weight: Int = 1) {
             self.from = from
             self.to = to
             self.kind = kind
+            self.weight = weight
         }
     }
 

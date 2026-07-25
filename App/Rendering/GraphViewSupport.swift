@@ -72,6 +72,10 @@ struct GraphLegendView: View {
             }
             Divider().frame(width: 150)
             legendRow(symbol: circleSizes, "size = connections (hubs are big)")
+            legendRow(symbol: AnyView(VStack(spacing: 3) {
+                Capsule().fill(.secondary).frame(width: 14, height: 1)
+                Capsule().fill(.secondary).frame(width: 14, height: 3)
+            }), "edge weight = references")
             legendRow(symbol: coverageArc, "ring = per-function coverage")
             legendRow(symbol: AnyView(HStack(spacing: 2) {
                 Capsule().fill(.green).frame(width: 5, height: 3)
