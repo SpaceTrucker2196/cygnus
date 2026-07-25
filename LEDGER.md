@@ -42,3 +42,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 3f193cd | 2026-07-25T18:03:04Z | claude-opus-4-8 | 811 | 10009 | 9222628 | 8027 | 4.9459 | Edge thickness by reference weight (core:referenceCount → GraphSnapshot.Edge.wei |
 | 50f3c3f | 2026-07-25T18:09:13Z | claude-opus-4-8 | 1547 | 30245 | 16702819 | 32788 | 9.4431 | Fix Build Index: enrich on source no-op so symbols appear after a build; idempot |
 | 84e88a8 | 2026-07-25T18:14:39Z | claude-opus-4-8 | 1416 | 25948 | 17767434 | 24808 | 9.7876 | Callers class-graph mode, inspector functions panel, code syntax highlighting |
+| 9801388 | 2026-07-25T18:22:05Z | claude-opus-4-8 | 526 | 29610 | 22400560 | 35854 | 12.3017 | Select-to-focus zoom + focus-set/satellite labels; Folder grouping mode |
