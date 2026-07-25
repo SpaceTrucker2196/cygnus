@@ -3,6 +3,25 @@ import Foundation
 @testable import CygnusKit
 
 struct CoverageProviderTests {
+    /// End-to-end attribution against a real repo: runs one test
+    /// class with coverage and harvests the artifact. Gated — it
+    /// executes a repo's test suite.
+    ///   CYGNUS_ATTR_REPO=/path CYGNUS_ATTR_CLASS=SomeTests
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CYGNUS_ATTR_REPO"] != nil))
+    func attributesOneTestClassEndToEnd() async throws {
+        let env = ProcessInfo.processInfo.environment
+        let repo = URL(fileURLWithPath: env["CYGNUS_ATTR_REPO"]!)
+        let testClass = env["CYGNUS_ATTR_CLASS"] ?? "GroupingTests"
+        let attributed = try await TestCoverageAttribution.run(
+            repoAt: repo, testClass: testClass, tooling: ProcessTooling())
+        #expect(attributed.testClass == testClass)
+        #expect(!attributed.report.byPath.isEmpty)
+        print("ATTR: \(testClass) covers \(attributed.report.byPath.count) files, e.g. " +
+              attributed.report.byPath.sorted { $0.value > $1.value }
+                .prefix(3).map { "\($0.key)=\(Int($0.value * 100))%" }
+                .joined(separator: ", "))
+    }
+
     @Test func parsesLLVMCovExportRelativizedToRepo() throws {
         let root = URL(fileURLWithPath: "/tmp/repo")
         let json = """

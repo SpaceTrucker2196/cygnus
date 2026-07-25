@@ -51,6 +51,28 @@ public final class WorkspaceStore {
     /// analysis honours it.
     public let memory: MemoryGovernor
 
+    /// Coverage attributed to a single test class (per-test halos in
+    /// the graph). One slot: attributing a new test replaces it.
+    public var attributedCoverage: AttributedCoverage?
+    public private(set) var attributingTest: String?
+
+    /// Run one test class in isolation and switch halos to its
+    /// coverage. User-initiated from the inspector.
+    public func attributeCoverage(testClass: String) {
+        guard let repo = selectedRepo, attributingTest == nil else { return }
+        attributingTest = testClass
+        Task { [weak self] in
+            defer { self?.attributingTest = nil }
+            guard let self else { return }
+            do {
+                self.attributedCoverage = try await self.attributeCoverage(
+                    testClass: testClass, for: repo)
+            } catch {
+                self.attributedCoverage = nil
+            }
+        }
+    }
+
     private let engine: any GraphEngine
     private let persistence: WorkspacePersistence
     let factory: any FactoryProvider

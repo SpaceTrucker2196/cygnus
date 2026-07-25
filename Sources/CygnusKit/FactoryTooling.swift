@@ -9,6 +9,7 @@ import Foundation
 public enum FactoryTool: String, Sendable, CaseIterable {
     case git
     case gh
+    case swift
 }
 
 /// The result of one subprocess invocation. Sendable so it can cross
