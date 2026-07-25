@@ -2,17 +2,18 @@ import Foundation
 import SwiftTreeSitter
 import TreeSitterPython
 import TreeSitterC
+import TreeSitterRust
 import CygnusGraph
 import CygnusObservation
 import CygnusProviders
 
-// tree-sitter host for the Python and C extractors. Grammars are
-// pinned exact in Package.swift. Extraction is query-driven; a new
-// language is a grammar dependency, a query, and a normalization map
-// to the core vocabulary.
+// tree-sitter host for the Python, C, and Rust extractors. Grammars
+// are pinned exact in Package.swift. Extraction is query-driven; a
+// new language is a grammar dependency, a query, and a normalization
+// map to the core vocabulary.
 
 public enum TreeSitterLanguageID: String, Sendable, CaseIterable {
-    case python, c
+    case python, c, rust
 }
 
 public enum TreeSitterHost {
@@ -21,6 +22,7 @@ public enum TreeSitterHost {
         switch id {
         case .python: Language(tree_sitter_python())
         case .c: Language(tree_sitter_c())
+        case .rust: Language(tree_sitter_rust())
         }
     }
 
@@ -81,6 +83,13 @@ public enum TreeSitterHost {
         let text = source as NSString
         var components: [String] = []
         var ancestor = node.parent
+        // The captured node is a declaration's `name` field, so its
+        // immediate parent is that declaration's own item — skip it,
+        // or a top-level `struct Foo` would path as "Foo.Foo".
+        if let parent = ancestor, nestingKinds.contains(parent.nodeType ?? ""),
+           parent.child(byFieldName: "name")?.range == node.range {
+            ancestor = parent.parent
+        }
         while let current = ancestor {
             if nestingKinds.contains(current.nodeType ?? ""),
                let nameNode = current.child(byFieldName: "name") {

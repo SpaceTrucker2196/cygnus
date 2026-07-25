@@ -24,6 +24,7 @@ let package = Package(
         // external scanner and breaking the link.
         .package(url: "https://github.com/tree-sitter/tree-sitter-python.git", exact: "0.23.6"),
         .package(url: "https://github.com/tree-sitter/tree-sitter-c.git", exact: "0.24.2"),
+        .package(url: "https://github.com/tree-sitter/tree-sitter-rust.git", exact: "0.24.2"),
         // Reference/call-edge enrichment (audited MISSION.md §5,
         // 2026-07-24). No semver upstream — pinned by revision to the
         // swift-6.3.3-RELEASE tag, matching the installed toolchain.
@@ -61,6 +62,7 @@ let package = Package(
             .product(name: "SwiftTreeSitter", package: "SwiftTreeSitter"),
             .product(name: "TreeSitterPython", package: "tree-sitter-python"),
             .product(name: "TreeSitterC", package: "tree-sitter-c"),
+            .product(name: "TreeSitterRust", package: "tree-sitter-rust"),
         ]),
 
         // Reads the graph, writes derived-layer facts only.

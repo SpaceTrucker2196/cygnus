@@ -103,6 +103,7 @@ public struct LocalFSProvider: Sendable {
         case "swift": "swift"
         case "py": "python"
         case "c", "h": "c"
+        case "rs": "rust"
         case "md", "markdown": "markdown"
         case "json": "json"
         case "yml", "yaml": "yaml"

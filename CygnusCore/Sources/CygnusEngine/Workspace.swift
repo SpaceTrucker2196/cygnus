@@ -61,7 +61,7 @@ public actor CygnusWorkspace {
         self.directory = directory
         self.store = try SQLiteGraphStore.onDisk(at: directory.appendingPathComponent("graph.sqlite"))
         self.contentStore = try ContentStore(root: directory.appendingPathComponent("cas"))
-        self.extractors = [SwiftExtractor(), PythonExtractor(), CExtractor()]
+        self.extractors = [SwiftExtractor(), PythonExtractor(), CExtractor(), RustExtractor()]
     }
 
     // MARK: - Registration
