@@ -277,6 +277,79 @@ extension WorkspaceStore {
         }
     }
 
+    // MARK: - Issue actions
+
+    /// Where an in-flight issue action stands, for the view to reflect.
+    public enum IssueActionState: Equatable, Sendable {
+        case idle, running
+        case failed(String)
+    }
+
+    /// Merge a fresh issue into the loaded list (replacing or
+    /// appending) and select it.
+    private func mergeIssue(_ issue: Issue, into id: UUID, select: Bool) {
+        mutateFactory(id) { state in
+            var issues = state.issues.value ?? []
+            if let index = issues.firstIndex(where: { $0.number == issue.number }) {
+                issues[index] = issue
+            } else {
+                issues.insert(issue, at: 0)
+            }
+            state.issues = .loaded(issues)
+        }
+        if select { selectedOrder = issue.number }
+    }
+
+    /// Run one issue action, reporting state through `onState`. Requires
+    /// GitHub reachable; returns the resulting issue number on success.
+    private func runIssueAction(
+        _ id: UUID,
+        onState: @escaping @MainActor (IssueActionState) -> Void,
+        select: Bool,
+        _ action: @escaping @Sendable (any FactoryProvider, RepoRemote) async throws -> Issue) {
+        guard factoryState(for: id).caps.github,
+              let remote = factoryState(for: id).caps.remote else {
+            onState(.failed("GitHub unavailable — check the remote and `gh auth login`."))
+            return
+        }
+        let provider = factory
+        onState(.running)
+        Task { @MainActor [weak self] in
+            do {
+                let issue = try await action(provider, remote)
+                self?.mergeIssue(issue, into: id, select: select)
+                onState(.idle)
+            } catch {
+                onState(.failed(WorkspaceStore.describe(error)))
+            }
+        }
+    }
+
+    /// Open a new production order (or plain issue).
+    public func createIssue(title: String, body: String, labels: [String], for id: UUID,
+                            onState: @escaping @MainActor (IssueActionState) -> Void) {
+        runIssueAction(id, onState: onState, select: true) { provider, remote in
+            try await provider.createIssue(remote: remote, title: title,
+                                           body: body, labels: labels)
+        }
+    }
+
+    /// Comment on an issue.
+    public func commentIssue(_ number: Int, body: String, for id: UUID,
+                             onState: @escaping @MainActor (IssueActionState) -> Void) {
+        runIssueAction(id, onState: onState, select: false) { provider, remote in
+            try await provider.commentIssue(remote: remote, number: number, body: body)
+        }
+    }
+
+    /// Close or reopen an issue.
+    public func setIssueClosed(_ number: Int, closed: Bool, for id: UUID,
+                               onState: @escaping @MainActor (IssueActionState) -> Void) {
+        runIssueAction(id, onState: onState, select: false) { provider, remote in
+            try await provider.setIssueState(remote: remote, number: number, closed: closed)
+        }
+    }
+
     /// Read one doc for the editor.
     public func readDoc(_ path: String, for id: UUID) async -> DocFile? {
         guard let url = repoURL(id) else { return nil }

@@ -67,5 +67,6 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       fastlane screenshots + Fastlane settings card + Pages previews,
       DF_Template installer; portfolio overview (aggregate spend /
       issues + per-repo cards when no repo is selected); coverage
-      halos with per-test attribution. Remaining candidates: issue
-      actions from the app, converge triggering.
+      halos with per-test attribution; issue actions (create
+      production orders, comment, close/reopen via `gh`). Remaining
+      candidate: converge triggering from the app.
