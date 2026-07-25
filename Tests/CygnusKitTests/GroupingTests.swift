@@ -159,3 +159,34 @@ import Foundation
             GraphSnapshot.Node(id: "m", kind: "core:module", label: "GRDB")) == "modules")
     }
 }
+
+@Suite struct ExplodeLayoutTests {
+    @Test func focusClusterCentersItsGroupAndRingsTheRest() {
+        var nodes: [GraphSnapshot.Node] = []
+        var edges: [GraphSnapshot.Edge] = []
+        for g in ["center", "a", "b"] {
+            for i in 0..<4 {
+                nodes.append(GraphSnapshot.Node(id: "\(g)\(i)", kind: "core:file",
+                    label: "\(g)\(i)", path: "\(g)/\(i).swift"))
+            }
+            // Intra-group edges so members cohere (as in a real graph).
+            for i in 0..<4 {
+                edges.append(GraphSnapshot.Edge(from: "\(g)\(i)", to: "\(g)\((i + 1) % 4)",
+                                                kind: "core:imports"))
+            }
+        }
+        let scene = GraphScene(nodes: nodes, edges: edges)
+        let clusters = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, GraphScene.folder(of: $0)) })
+        var final = LayoutFrame.empty
+        LayoutEngine.run(scene: scene, seed: 3, clusters: clusters, focusCluster: "center",
+                         maxIterations: 400, emitEvery: 20) { final = $0; return true }
+        func dist(_ prefix: String) -> Double {
+            let pts = final.positions.filter { $0.key.hasPrefix(prefix) }.map(\.value)
+            let c = pts.reduce(SIMD2(0, 0), +) / Double(pts.count)
+            return (c * c).sum().squareRoot()
+        }
+        // The focused group sits nearest origin; the others are pushed out.
+        #expect(dist("center") < dist("a"))
+        #expect(dist("center") < dist("b"))
+    }
+}

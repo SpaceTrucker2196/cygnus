@@ -30,10 +30,14 @@ struct FlatGraphView: View {
     @State private var coverage: CoverageReport?
     @State private var cyclicEdges: Set<String> = []
     @State private var viewSize: CGSize = .zero
+    /// A legend group clicked to "explode" — it moves to center, the
+    /// rest ring around it.
+    @State private var explodedGroup: String?
 
     private struct LayoutInput: Equatable {
         let scene: GraphScene
         let grouping: GraphScene.Grouping
+        let explodedGroup: String?
     }
 
     /// Halo source, most-specific first: the live suite run, then a
@@ -63,10 +67,11 @@ struct FlatGraphView: View {
                 .onChange(of: geometry.size) { viewSize = $1 }
         }
         .onChange(of: store.selectedNode) { _, _ in focusOnSelection() }
-        .task(id: LayoutInput(scene: scene, grouping: grouping)) {
+        .task(id: LayoutInput(scene: scene, grouping: grouping, explodedGroup: explodedGroup)) {
             cyclicEdges = scene.cyclicEdges
             for await next in LayoutEngine(scene: scene, initial: frame.positions,
-                                           clusters: scene.clusters(grouping: grouping)).frames() {
+                                           clusters: scene.clusters(grouping: grouping),
+                                           focusCluster: explodedGroup).frames() {
                 frame = next
             }
         }
@@ -85,7 +90,8 @@ struct FlatGraphView: View {
             if legendShown {
                 let clusters = scene.clusters(grouping: grouping)
                 GraphLegendView(scene: scene, cycleCount: cyclicEdges.count,
-                                colors: GraphPalette.colors(nodes: scene.nodes, clusters: clusters))
+                                colors: GraphPalette.colors(nodes: scene.nodes, clusters: clusters),
+                                explodedGroup: $explodedGroup)
             }
         }
         .overlay(alignment: .bottomTrailing) { statusReadout }
@@ -373,7 +379,9 @@ struct FlatGraphView: View {
             let rect = CGRect(x: point.x - radius, y: point.y - radius,
                               width: radius * 2, height: radius * 2)
             let isSelected = node.id == store.selectedNode
-            let dimmed = focus != nil && !focus!.contains(node.id)
+            let outsideGroup = explodedGroup != nil
+                && GraphPalette.key(for: node, clusters: clusters) != explodedGroup
+            let dimmed = (focus != nil && !focus!.contains(node.id)) || outsideGroup
             let fill = GraphPalette.color(for: node, clusters: clusters, in: colors)
             context.fill(Path(ellipseIn: rect),
                          with: .color(fill.opacity(dimmed ? 0.2 : 1)))

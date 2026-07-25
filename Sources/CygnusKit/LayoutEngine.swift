@@ -27,14 +27,17 @@ public struct LayoutEngine: Sendable {
     private let seed: UInt64
     private let initial: [String: SIMD2<Double>]
     private let clusters: [String: String]
+    private let focusCluster: String?
 
     public init(scene: GraphScene, seed: UInt64 = 0xC516,
                 initial: [String: SIMD2<Double>] = [:],
-                clusters: [String: String] = [:]) {
+                clusters: [String: String] = [:],
+                focusCluster: String? = nil) {
         self.scene = scene
         self.seed = seed
         self.initial = initial
         self.clusters = clusters
+        self.focusCluster = focusCluster
     }
 
     /// Progressive layout frames, ending with a settled frame (or on
@@ -49,9 +52,11 @@ public struct LayoutEngine: Sendable {
         let seed = self.seed
         let initial = self.initial
         let clusters = self.clusters
+        let focusCluster = self.focusCluster
         return AsyncStream(LayoutFrame.self, bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task.detached(priority: .userInitiated) {
                 Self.run(scene: scene, seed: seed, initial: initial, clusters: clusters,
+                         focusCluster: focusCluster,
                          maxIterations: maxIterations, emitEvery: emitEvery) { frame in
                     continuation.yield(frame)
                     return !Task.isCancelled
@@ -66,6 +71,7 @@ public struct LayoutEngine: Sendable {
     static func run(scene: GraphScene, seed: UInt64,
                     initial: [String: SIMD2<Double>] = [:],
                     clusters: [String: String] = [:],
+                    focusCluster: String? = nil,
                     maxIterations: Int, emitEvery: Int,
                     emit: (LayoutFrame) -> Bool) {
         let ids = scene.nodes.map(\.id)
@@ -105,7 +111,19 @@ public struct LayoutEngine: Sendable {
         // stability, the Kuhn/ELK "consistent layout" principle).
         let groupNames = Set(clusters.values).sorted()
         var anchorByGroup: [String: SIMD2<Double>] = [:]
-        if groupNames.count == 1 {
+        if let focus = focusCluster, groupNames.contains(focus) {
+            // Explode around a chosen group: it sits at the center, the
+            // rest ring around it at a wide radius. Reading one group's
+            // relationship to everything else.
+            anchorByGroup[focus] = .zero
+            let others = groupNames.filter { $0 != focus }
+            let ringRadius = max(4.0 * k, 1.3 * k * Double(n).squareRoot())
+            for (index, name) in others.enumerated() {
+                let angle = 2 * .pi * Double(index) / Double(max(others.count, 1))
+                anchorByGroup[name] = SIMD2(ringRadius * cos(angle),
+                                            ringRadius * sin(angle))
+            }
+        } else if groupNames.count == 1 {
             anchorByGroup[groupNames[0]] = .zero
         } else {
             let ringRadius = max(2.0 * k, 0.75 * k * Double(n).squareRoot())
