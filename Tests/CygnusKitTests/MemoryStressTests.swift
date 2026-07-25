@@ -14,6 +14,56 @@ struct MemoryStressTests {
         ProcessInfo.processInfo.environment["CYGNUS_STRESS_REPO"]
     }
 
+    /// Colon-separated repo paths analyzed CONCURRENTLY — the app's
+    /// real crash trigger (serial CLI runs never reproduced it). Run
+    /// under ASan/TSan to catch corruption at the fault site.
+    nonisolated static var concurrentRepos: [String] {
+        (ProcessInfo.processInfo.environment["CYGNUS_STRESS_REPOS"] ?? "")
+            .split(separator: ":").map(String.init)
+    }
+
+    @Test(.enabled(if: !concurrentRepos.isEmpty))
+    func concurrentAnalysesComplete() async throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-concurrent-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+
+        let store = WorkspaceStore(
+            engine: WorkspaceGraphEngine(directory: base.appendingPathComponent("engine")),
+            persistence: WorkspacePersistence(
+                fileURL: base.appendingPathComponent("workspace.json")))
+        var ids: [UUID] = []
+        for path in Self.concurrentRepos {
+            let repo = RegisteredRepo(displayName: (path as NSString).lastPathComponent,
+                                      pathHint: path, bookmark: Data())
+            store.testInject(repo: repo)
+            ids.append(repo.id)
+        }
+        // Fire all analyses at once, then re-fire the first two after a
+        // beat — cancellation + fresh runs interleaving, as in the app.
+        for id in ids { store.analyze(id) }
+        try await Task.sleep(for: .milliseconds(500))
+        for id in ids.prefix(2) { store.analyze(id) }
+
+        let deadline = ContinuousClock.now + .seconds(600)
+        while ContinuousClock.now < deadline {
+            let done = ids.allSatisfy { id in
+                switch store.states[id] {
+                case .ready, .failed: true
+                default: false
+                }
+            }
+            if done { break }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        for id in ids {
+            guard case .ready? = store.states[id] else {
+                Issue.record("repo \(id) did not reach ready: \(String(describing: store.states[id]).prefix(120))")
+                continue
+            }
+        }
+    }
+
     @Test(.enabled(if: stressRepo != nil))
     func analysisStaysUnderMemoryBudget() async throws {
         let repoPath = Self.stressRepo!
