@@ -32,3 +32,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 04655dd | 2026-07-25T04:45:44Z | claude-fable-5 | 12 | 1933 | 3300066 | 4271 | 3.4823 | S7 portfolio overview: all-repos aggregate + per-repo cards |
 | 06327c1 | 2026-07-25T04:59:11Z | claude-fable-5 | 2655 | 54506 | 29305401 | 63182 | 33.3209 | Reference enrichment: index-store observations → derived core:references edges,  |
 | 03dc38e | 2026-07-25T17:13:38Z | claude-fable-5,claude-opus-4-8 | 2156 | 35887 | 17578752 | 3136549 | 59.5320 | S7 issue actions: create/comment/close-reopen production orders via gh, with tes |
+| a460061 | 2026-07-25T17:21:13Z | claude-opus-4-8 | 937 | 36125 | 19317026 | 50464 | 11.0710 | Symbol-level decl→decl reference edges via index-store definition-location mappi |
