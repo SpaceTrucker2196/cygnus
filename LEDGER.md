@@ -30,3 +30,4 @@ after each substantive commit. Never hand-author or estimate rows.
 | 2eab6fc | 2026-07-25T04:40:55Z | claude-fable-5 | 2295 | 50396 | 28229746 | 47925 | 31.7310 | Per-test coverage attribution: filtered test runs feed per-test halos |
 | de3edc4 | 2026-07-25T04:44:44Z | claude-fable-5 | 1257 | 28274 | 15686443 | 22830 | 17.5693 | IndexStoreDB adopted: pinned dep, IndexStoreReader actor, live smoke on cygnus's |
 | 04655dd | 2026-07-25T04:45:44Z | claude-fable-5 | 12 | 1933 | 3300066 | 4271 | 3.4823 | S7 portfolio overview: all-repos aggregate + per-repo cards |
+| 06327c1 | 2026-07-25T04:59:11Z | claude-fable-5 | 2655 | 54506 | 29305401 | 63182 | 33.3209 | Reference enrichment: index-store observations → derived core:references edges,  |
