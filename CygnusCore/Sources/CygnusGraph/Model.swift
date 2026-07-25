@@ -85,6 +85,10 @@ extension RelationshipKind {
     /// File → file: a symbol defined in the target is referenced from
     /// the source (compiler-resolved, index-store enrichment).
     public static let references = RelationshipKind("core:references")
+    /// Declaration → declaration: the source declaration references a
+    /// symbol defined by the target declaration (the file→file edge at
+    /// symbol granularity — the caller/callee wiring).
+    public static let refersToSymbol = RelationshipKind("core:refersToSymbol")
     public static let inherits = RelationshipKind("core:inherits")
     public static let conformsTo = RelationshipKind("core:conformsTo")
 }

@@ -61,6 +61,9 @@ public actor IndexStoreReader {
 
     /// One cross-file reference: `fromPath` (repo-relative) uses
     /// `symbolName`, which is defined in `toPath` (repo-relative).
+    /// `line` is where the reference occurs; `defLine` is where the
+    /// symbol is defined — enough to map both ends to the enclosing
+    /// declaration for symbol-level edges.
     public struct FileReference: Sendable, Equatable {
         public let fromPath: String
         public let toPath: String
@@ -68,6 +71,7 @@ public actor IndexStoreReader {
         public let symbolName: String
         public let line: Int
         public let column: Int
+        public let defLine: Int
     }
 
     /// Symbol-name sweep bound — a runaway store must not turn
@@ -96,6 +100,7 @@ public actor IndexStoreReader {
                       canonical.roles.contains(.definition),
                       let definedIn = relative(canonical.location.path)
                 else { continue }
+                let defLine = canonical.location.line
                 for occurrence in db.occurrences(ofUSR: usr, roles: [.reference, .call]) {
                     guard let fromPath = relative(occurrence.location.path),
                           fromPath != definedIn
@@ -104,7 +109,8 @@ public actor IndexStoreReader {
                         fromPath: fromPath, toPath: definedIn,
                         symbolUSR: usr, symbolName: canonical.symbol.name,
                         line: occurrence.location.line,
-                        column: occurrence.location.utf8Column))
+                        column: occurrence.location.utf8Column,
+                        defLine: defLine))
                 }
             }
         }
