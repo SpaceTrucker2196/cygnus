@@ -151,6 +151,17 @@ struct ReadyContentView: View {
                 }
                 .pickerStyle(.segmented)
             }
+            if store.viewMode == .flat {
+                ToolbarItem {
+                    Picker("Content", selection: $store.graphContent) {
+                        ForEach(WorkspaceStore.GraphContent.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .help("Code = file/module dependencies · Symbols = declaration references (needs an index build)")
+                }
+            }
             ToolbarItem {
                 Menu {
                     Toggle("Show External Modules", isOn: $store.showExternalModules)
@@ -168,16 +179,32 @@ struct DependencyGraphView: View {
     let snapshot: GraphSnapshot
 
     var body: some View {
-        let scene = GraphScene.dependencies(from: snapshot,
+        let scene = switch store.graphContent {
+        case .code: GraphScene.dependencies(from: snapshot,
                                             showExternal: store.showExternalModules)
+        case .symbols: GraphScene.symbols(from: snapshot)
+        }
         if scene.nodes.isEmpty {
+            emptyState
+        } else {
+            FlatGraphView(scene: scene)
+        }
+    }
+
+    @ViewBuilder private var emptyState: some View {
+        switch store.graphContent {
+        case .code:
             ContentUnavailableView(
                 "No Internal Imports",
                 systemImage: "point.3.filled.connected.trianglepath.dotted",
                 description: Text("Only project-internal imports are charted. " +
                                   "Try Filters → Show External Modules."))
-        } else {
-            FlatGraphView(scene: scene)
+        case .symbols:
+            ContentUnavailableView(
+                "No Symbol References",
+                systemImage: "arrow.triangle.branch",
+                description: Text("Declaration references come from a compiled index store. " +
+                                  "Build the repo (swift build), then re-analyze."))
         }
     }
 }

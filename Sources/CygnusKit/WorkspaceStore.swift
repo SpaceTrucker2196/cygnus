@@ -29,6 +29,13 @@ public final class WorkspaceStore {
         case outline = "Outline"
         case flat = "Flat"
     }
+    /// What the Flat graph charts. Symbols appears once a repo has
+    /// reference enrichment (built with an index store).
+    public enum GraphContent: String, CaseIterable, Sendable {
+        case code = "Code"        // file/module dependency graph
+        case symbols = "Symbols"  // decl → decl reference graph
+    }
+    public var graphContent: GraphContent = .code
 
     public var selectedRepo: UUID?
     public var selectedNode: String?
