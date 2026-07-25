@@ -26,6 +26,7 @@ struct FlatGraphView: View {
     @State private var grouping: GraphScene.Grouping = .area
     @State private var coverageMode = true
     @State private var cyclesOnly = false
+    @State private var expandFunctions = false
     @State private var coverage: CoverageReport?
     @State private var cyclicEdges: Set<String> = []
 
@@ -73,7 +74,7 @@ struct FlatGraphView: View {
             GraphControlBar(zoom: $zoom, labelMode: $labelMode, labelSize: $labelSize,
                             legendShown: $legendShown, grouping: $grouping,
                             coverageMode: $coverageMode, cyclesOnly: $cyclesOnly,
-                            cycleCount: cyclicEdges.count)
+                            expandFunctions: $expandFunctions, cycleCount: cyclicEdges.count)
         }
         .overlay(alignment: .topLeading) { coverageStatus }
         .overlay(alignment: .bottomLeading) {
@@ -144,6 +145,9 @@ struct FlatGraphView: View {
             drawEdges(context: context, transform: transform, focus: focus, byID: byID)
             drawNodes(context: context, in: size, transform: transform,
                       clusters: clusters, colors: colors, focus: focus)
+            if expandFunctions {
+                drawSatellites(context: context, in: size, transform: transform, focus: focus)
+            }
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
@@ -214,6 +218,73 @@ struct FlatGraphView: View {
 
     private func coverageColor(_ fraction: Double) -> Color {
         Color(hue: 0.33 * fraction, saturation: 0.85, brightness: 0.85)
+    }
+
+    // MARK: - Function satellites (expand mode)
+
+    /// Member functions of a node, from the full snapshot's declares
+    /// edges — the satellites that orbit it when expanded.
+    private func memberFunctions(of id: String) -> [GraphSnapshot.Node] {
+        guard let index = store.currentIndex else { return [] }
+        return (index.outgoing[id] ?? [])
+            .filter { $0.kind == "core:declares" }
+            .compactMap { index.byID[$0.to] }
+            .filter { $0.kind.hasSuffix(":function") }
+            .sorted { ($0.line ?? 0) < ($1.line ?? 0) }
+    }
+
+    /// Every function satellite's screen position, keyed for both
+    /// drawing and hit-testing so a click lands on the same dot the
+    /// eye sees. Orbit radius grows a little with the parent so its
+    /// own ring/label clears the satellites.
+    private func satellites(in size: CGSize) -> [(node: GraphSnapshot.Node,
+                                                  at: CGPoint, parent: CGPoint)] {
+        let transform = viewTransform(in: size)
+        var result: [(GraphSnapshot.Node, CGPoint, CGPoint)] = []
+        for node in scene.nodes {
+            guard let position = frame.positions[node.id] else { continue }
+            let functions = memberFunctions(of: node.id)
+            guard !functions.isEmpty else { continue }
+            let center = CGPoint(x: position.x, y: position.y).applying(transform)
+            let orbit = nodeRadius(node) + 16 + min(CGFloat(functions.count), 8)
+            for (i, function) in functions.enumerated() {
+                let angle = 2 * .pi * Double(i) / Double(functions.count) - .pi / 2
+                let at = CGPoint(x: center.x + orbit * cos(angle),
+                                 y: center.y + orbit * sin(angle))
+                result.append((function, at, center))
+            }
+        }
+        return result
+    }
+
+    private func drawSatellites(context: GraphicsContext, in size: CGSize,
+                                transform: CGAffineTransform, focus: Set<String>?) {
+        let showLabels = labelMode != .off && currentScale(in: size) > 1.2
+        for (function, at, parent) in satellites(in: size) {
+            let dimmed = focus != nil && !focus!.contains(function.id)
+            let coverageFraction = activeCoverage?.functionFraction(
+                path: function.path, line: function.line)
+            let fill = coverageFraction.map(coverageColor) ?? .secondary
+            // A thin tether to the parent, then the satellite dot.
+            var tether = Path()
+            tether.move(to: parent); tether.addLine(to: at)
+            context.stroke(tether, with: .color(.secondary.opacity(dimmed ? 0.05 : 0.2)),
+                           lineWidth: 0.5)
+            let selected = function.id == store.selectedNode
+            let r: CGFloat = selected ? 4 : 2.8
+            context.fill(Path(ellipseIn: CGRect(x: at.x - r, y: at.y - r, width: r * 2, height: r * 2)),
+                         with: .color(fill.opacity(dimmed ? 0.25 : 1)))
+            if selected {
+                context.stroke(Path(ellipseIn: CGRect(x: at.x - r - 2, y: at.y - r - 2,
+                                                       width: (r + 2) * 2, height: (r + 2) * 2)),
+                               with: .color(.accentColor), lineWidth: 1.5)
+            }
+            if (showLabels || selected) && !dimmed {
+                context.draw(Text(function.label).font(.system(size: labelSize - 2))
+                    .foregroundStyle(.secondary),
+                    at: CGPoint(x: at.x, y: at.y - r - 5))
+            }
+        }
     }
 
     /// Per-function coverage for a class-like node: its member
@@ -390,14 +461,26 @@ struct FlatGraphView: View {
     // MARK: - Interaction
 
     private func select(at location: CGPoint, in size: CGSize) {
-        let transform = viewTransform(in: size)
         var best: (id: String, distance: CGFloat)?
-        for node in scene.nodes {
-            guard let position = frame.positions[node.id] else { continue }
-            let point = CGPoint(x: position.x, y: position.y).applying(transform)
-            let distance = hypot(point.x - location.x, point.y - location.y)
-            if distance < nodeRadius(node) + 6, distance < (best?.distance ?? .infinity) {
-                best = (node.id, distance)
+        // Satellites sit on top — hit-test them first, with a tight
+        // radius so they don't steal clicks meant for their parent.
+        if expandFunctions {
+            for (function, at, _) in satellites(in: size) {
+                let distance = hypot(at.x - location.x, at.y - location.y)
+                if distance < 6, distance < (best?.distance ?? .infinity) {
+                    best = (function.id, distance)
+                }
+            }
+        }
+        if best == nil {
+            let transform = viewTransform(in: size)
+            for node in scene.nodes {
+                guard let position = frame.positions[node.id] else { continue }
+                let point = CGPoint(x: position.x, y: position.y).applying(transform)
+                let distance = hypot(point.x - location.x, point.y - location.y)
+                if distance < nodeRadius(node) + 6, distance < (best?.distance ?? .infinity) {
+                    best = (node.id, distance)
+                }
             }
         }
         // Tapping empty space clears the focus.

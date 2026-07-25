@@ -127,6 +127,7 @@ struct GraphControlBar: View {
     @Binding var grouping: GraphScene.Grouping
     @Binding var coverageMode: Bool
     @Binding var cyclesOnly: Bool
+    @Binding var expandFunctions: Bool
     var cycleCount: Int = 0
 
     var body: some View {
@@ -167,6 +168,11 @@ struct GraphControlBar: View {
             .toggleStyle(.checkbox)
             .disabled(cycleCount == 0)
             .help("Dependency cycles draw amber always; toggle to isolate them")
+            Toggle(isOn: $expandFunctions) {
+                Label("Expand", systemImage: "circle.hexagongrid")
+            }
+            .toggleStyle(.checkbox)
+            .help("Orbit each node's functions around it as selectable satellites, colored by coverage")
         }
         .controlSize(.small)
         .padding(.horizontal, 12)
