@@ -32,8 +32,8 @@ struct FastlaneScanTests {
         """.write(to: root.appendingPathComponent("fastlane/Fastfile"),
                   atomically: true, encoding: .utf8)
         try """
-        app_identifier "io.river.demo"
-        apple_id("jeff@river.io")
+        app_identifier "com.example.demo"
+        apple_id("dev@example.com")
         # team_id "COMMENTED"
         team_id 'ABC123'
         """.write(to: root.appendingPathComponent("fastlane/Appfile"),
@@ -55,8 +55,8 @@ struct FastlaneScanTests {
         #expect(!info.lanes[1].inCI)                     // only in a comment
         #expect(info.lanes[1].desc == nil)               // desc doesn't leak across lanes
         #expect(info.appfile == [
-            .init(key: "app_identifier", value: "io.river.demo"),
-            .init(key: "apple_id", value: "jeff@river.io"),
+            .init(key: "app_identifier", value: "com.example.demo"),
+            .init(key: "apple_id", value: "dev@example.com"),
             .init(key: "team_id", value: "ABC123"),
         ])
         #expect(info.ciInvocations == ["deploy.yml: bundle exec fastlane ios beta"])

@@ -7,3 +7,6 @@ App/Info.plist
 *.xcuserdatad
 *.dSYM/
 .swiftpm/
+
+# Owner billing ledger — kept local, never published (see AGENTS.md)
+LEDGER.md

@@ -96,12 +96,12 @@ renders it in 3D. Two products in one repo:
 
 The owner bills from `LEDGER.md` (exact, never estimated). After every
 substantive commit: run `~/.claude/billing/ledger.py --append
---summary "<desc>"`, then commit `LEDGER.md` as its own
-`chore(ledger): <sha>` commit. Never hand-author, estimate, or rewrite
-rows (append-only); if the script can't produce a row, stop and
-surface it. Start billable sessions **inside this repo**, not
-`~/projects` (ledger.py can't attribute sessions launched from the
-workspace root).
+--summary "<desc>"`. `LEDGER.md` is **local-only and gitignored** —
+this repo is public, so the ledger is never committed (its rows are
+river.io billing data). Never hand-author, estimate, or rewrite rows
+(append-only); if the script can't produce a row, stop and surface
+it. Start billable sessions **inside this repo**, not `~/projects`
+(ledger.py can't attribute sessions launched from the workspace root).
 
 Reporting (optional, read-only): `ledger.py --energy-total` estimates
 the rough datacenter energy (kWh) behind the whole ledger;
