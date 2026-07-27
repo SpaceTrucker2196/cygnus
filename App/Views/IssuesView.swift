@@ -163,6 +163,9 @@ private struct IssueRow: View {
                 }
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Issue \(issue.number), \(issue.title)")
+        .accessibilityValue(issue.state == .open ? "open" : "closed")
     }
 }
 

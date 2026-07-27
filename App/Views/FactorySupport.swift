@@ -51,6 +51,10 @@ struct OpsCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        // Read the whole card as one grouped element titled by its
+        // heading, so VoiceOver announces "Latest CI" etc. up front.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title ?? "")
     }
 }
 

@@ -21,6 +21,8 @@ struct RepoDetailView: View {
                                 }
                             }
                             .pickerStyle(.segmented)
+                            .accessibilityLabel("Section")
+                            .accessibilityIdentifier("detail.sectionPicker")
                         }
                     }
                     .task(id: repoID) { store.selectRepoSection(store.selectedSection, for: repoID) }
@@ -150,6 +152,8 @@ struct ReadyContentView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityLabel("View mode")
+                .accessibilityIdentifier("detail.viewModePicker")
             }
             if store.viewMode == .flat {
                 ToolbarItem {
@@ -160,6 +164,8 @@ struct ReadyContentView: View {
                     }
                     .pickerStyle(.segmented)
                     .help("Code = file/module dependencies · Symbols = declaration references (needs an index build)")
+                    .accessibilityLabel("Graph content")
+                    .accessibilityIdentifier("detail.contentPicker")
                 }
             }
             ToolbarItem {

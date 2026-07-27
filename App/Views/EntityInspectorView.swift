@@ -133,6 +133,9 @@ struct FunctionsSection: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Function \(function.label)")
+                    .accessibilityValue(coverageDescription(for: function))
+                    .accessibilityHint("Select to focus")
                 }
             }
         }
@@ -149,6 +152,14 @@ struct FunctionsSection: View {
             Image(systemName: "function").font(.caption2).foregroundStyle(.secondary)
         }
     }
+
+    private func coverageDescription(for function: GraphSnapshot.Node) -> String {
+        let report = store.liveCoverage ?? store.attributedCoverage?.report
+        if let fraction = report?.functionFraction(path: function.path, line: function.line) {
+            return "\(Int(fraction * 100)) percent covered"
+        }
+        return ""
+    }
 }
 
 struct EdgeSection: View {
@@ -163,17 +174,18 @@ struct EdgeSection: View {
             Section("\(title) (\(edges.count))") {
                 ForEach(Array(edges.prefix(100).enumerated()), id: \.offset) { _, edge in
                     if let other = index.byID[edge[keyPath: endpoint]] {
+                        let relation = edge.kind.split(separator: ":").last.map(String.init) ?? ""
                         Button {
                             store.selectedNode = other.id
                         } label: {
                             HStack {
-                                Text(edge.kind.split(separator: ":").last.map(String.init) ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                Text(relation).font(.caption).foregroundStyle(.secondary)
                                 NodeRowView(node: other)
                             }
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("\(relation) \(other.label)")
+                        .accessibilityHint("Select to navigate")
                     }
                 }
                 if edges.count > 100 {

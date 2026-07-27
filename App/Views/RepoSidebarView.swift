@@ -37,6 +37,8 @@ struct RepoSidebarView: View {
                         Label("Add Repository", systemImage: "plus")
                     }
                     .buttonStyle(.borderless)
+                    .accessibilityIdentifier("sidebar.addRepository")
+                    .accessibilityHint("Choose a repository folder to analyze")
                     Spacer()
                 }
             }
@@ -81,6 +83,10 @@ struct MemoryMeterView: View {
                 .tint(tint)
         }
         .help("Memory usage against the \(governor.summary.split(separator: "/").last ?? "") hard limit")
+        .accessibilityElement()
+        .accessibilityLabel("Memory usage")
+        .accessibilityValue(governor.summary + (governor.isCritical ? ", at limit"
+            : governor.isHigh ? ", high" : ""))
         // Post-launch side effect on purpose: starting the sampler in
         // WorkspaceStore.init (App.init time) suppressed window
         // creation on this OS.
@@ -114,6 +120,19 @@ struct RepoRowView: View {
             }
             Spacer()
             statusGlyph
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(repo.displayName)
+        .accessibilityValue(statusDescription)
+    }
+
+    private var statusDescription: String {
+        switch store.states[repo.id] {
+        case .analyzing: "analyzing"
+        case .ready: "analyzed"
+        case .failed: "failed"
+        case .needsRelink: "folder not found"
+        case .idle, nil: "not analyzed"
         }
     }
 

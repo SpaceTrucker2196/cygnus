@@ -66,6 +66,14 @@ struct FlatGraphView: View {
                 }
                 .onAppear { viewSize = geometry.size }
                 .onChange(of: geometry.size) { viewSize = $1 }
+                // The Canvas is opaque to VoiceOver — represent it as a
+                // single element that describes the graph and announces
+                // the current selection.
+                .accessibilityElement()
+                .accessibilityIdentifier("graph.canvas")
+                .accessibilityLabel("Dependency graph")
+                .accessibilityValue(graphAccessibilityValue)
+                .accessibilityHint("Drag to pan, pinch to zoom. Select a node in the outline to focus it.")
         }
         .onChange(of: store.selectedNode) { _, _ in focusOnSelection() }
         .task(id: LayoutInput(scene: scene, grouping: grouping, explodedGroup: explodedGroup)) {
@@ -140,6 +148,20 @@ struct FlatGraphView: View {
         Text("\(scene.nodes.count) nodes · \(scene.edges.count) edges"
              + (cyclicEdges.isEmpty ? "" : " · \(cyclicEdges.count) in cycles"))
             .font(.caption).foregroundStyle(.secondary).padding(6)
+            .accessibilityElement()
+            .accessibilityLabel("\(scene.nodes.count) nodes, \(scene.edges.count) edges"
+                + (cyclicEdges.isEmpty ? "" : ", \(cyclicEdges.count) edges in cycles"))
+    }
+
+    /// Spoken summary of the graph's current state for VoiceOver.
+    private var graphAccessibilityValue: String {
+        var parts = ["\(scene.nodes.count) nodes", "\(scene.edges.count) edges"]
+        if !cyclicEdges.isEmpty { parts.append("\(cyclicEdges.count) edges in dependency cycles") }
+        if let selected = store.selectedNode,
+           let node = scene.nodes.first(where: { $0.id == selected }) {
+            parts.append("selected: \(node.label)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     // MARK: - Canvas

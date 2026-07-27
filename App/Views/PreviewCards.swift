@@ -45,6 +45,9 @@ private struct ScreenshotThumbnail: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .onTapGesture { NSWorkspace.shared.open(url) }
                     .help(url.lastPathComponent)
+                    .accessibilityLabel("Screenshot \(url.lastPathComponent)")
+                    .accessibilityHint("Open in Finder")
+                    .accessibilityAddTraits(.isButton)
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(.quaternary)
@@ -188,6 +191,11 @@ private struct PageThumbnail: View {
             // Display-only: swallow scrolls/clicks.
             .overlay { Color.clear.contentShape(Rectangle()) }
             .onTapGesture { NSWorkspace.shared.open(url) }
+            .accessibilityElement()
+            .accessibilityLabel("GitHub Pages site preview")
+            .accessibilityValue(url.absoluteString)
+            .accessibilityHint("Open the site in your browser")
+            .accessibilityAddTraits(.isButton)
     }
 }
 

@@ -81,6 +81,9 @@ struct GraphLegendView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Group \(group)")
+                .accessibilityValue(explodedGroup == group ? "exploded" : "")
+                .accessibilityHint("Center this group and ring the rest around it")
             }
             Divider().frame(width: 150)
             legendRow(symbol: circleSizes, "size = connections (hubs are big)")
@@ -154,29 +157,39 @@ struct GraphControlBar: View {
             .pickerStyle(.segmented)
             .frame(width: 230)
             .help("How nodes cluster: project area, prod/tests/modules layers, or architectural roles (MVVM/MVC naming)")
+            .accessibilityLabel("Grouping")
             HStack(spacing: 6) {
                 Image(systemName: "minus.magnifyingglass").foregroundStyle(.secondary)
                 Slider(value: Binding(get: { log2(zoom) }, set: { zoom = pow(2, $0) }),
                        in: -2...3)
                     .frame(width: 120)
+                    .accessibilityLabel("Zoom")
+                    .accessibilityValue("\(Int(zoom * 100)) percent")
                 Image(systemName: "plus.magnifyingglass").foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .contain)
             HStack(spacing: 6) {
                 Image(systemName: "textformat.size.smaller").foregroundStyle(.secondary)
                 Slider(value: $labelSize, in: 8...20)
                     .frame(width: 90)
+                    .accessibilityLabel("Label size")
+                    .accessibilityValue("\(Int(labelSize)) points")
                 Image(systemName: "textformat.size.larger").foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .contain)
             Picker("Labels", selection: $labelMode) {
                 ForEach(LabelMode.allCases, id: \.self) { Text($0.rawValue) }
             }
             .pickerStyle(.segmented)
             .frame(width: 150)
+            .accessibilityLabel("Node labels")
             Toggle("Legend", isOn: $legendShown)
                 .toggleStyle(.checkbox)
+                .accessibilityHint("Show or hide the visual-grammar key")
             Toggle("Coverage", isOn: $coverageMode)
                 .toggleStyle(.checkbox)
                 .help("Halo per node showing test line-coverage, live as the suite runs")
+                .accessibilityHint("Show per-function test-coverage rings on nodes")
             Toggle(isOn: $cyclesOnly) {
                 Label("Cycles\(cycleCount > 0 ? " (\(cycleCount))" : "")",
                       systemImage: "arrow.triangle.capsulepath")
@@ -184,12 +197,18 @@ struct GraphControlBar: View {
             .toggleStyle(.checkbox)
             .disabled(cycleCount == 0)
             .help("Dependency cycles draw amber always; toggle to isolate them")
+            .accessibilityLabel("Isolate cycles")
+            .accessibilityValue(cycleCount == 0 ? "no cycles" : "\(cycleCount) edges in cycles")
             Toggle(isOn: $expandFunctions) {
                 Label("Expand", systemImage: "circle.hexagongrid")
             }
             .toggleStyle(.checkbox)
             .help("Orbit each node's functions around it as selectable satellites, colored by coverage")
+            .accessibilityLabel("Expand functions")
+            .accessibilityHint("Orbit each node's functions as selectable satellites")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Graph controls")
         .controlSize(.small)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
