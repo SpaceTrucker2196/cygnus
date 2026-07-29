@@ -7,6 +7,7 @@ import Foundation
 public enum RepoSection: String, CaseIterable, Sendable {
     case dashboard
     case workflow
+    case ciFlow
     case issues
     case docs
     case codeGraph
@@ -15,6 +16,7 @@ public enum RepoSection: String, CaseIterable, Sendable {
         switch self {
         case .dashboard: "Dashboard"
         case .workflow: "Workflow"
+        case .ciFlow: "CI Flow"
         case .issues: "Issues"
         case .docs: "Docs"
         case .codeGraph: "Code Graph"
@@ -25,6 +27,7 @@ public enum RepoSection: String, CaseIterable, Sendable {
         switch self {
         case .dashboard: "gauge.with.dots.needle.33percent"
         case .workflow: "arrow.trianglehead.branch"
+        case .ciFlow: "flowchart"
         case .issues: "checklist"
         case .docs: "doc.text"
         case .codeGraph: "point.3.connected.trianglepath.dotted"

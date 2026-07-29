@@ -42,6 +42,7 @@ struct RepoDetailView: View {
         switch store.selectedSection {
         case .dashboard: DashboardView(repoID: id)
         case .workflow: WorkflowView(repoID: id)
+        case .ciFlow: CIFlowView(repoID: id)
         case .issues: IssuesView(repoID: id)
         case .docs: DocsView(repoID: id)
         case .codeGraph: CodeGraphContainerView()

@@ -210,19 +210,23 @@ public struct FactoryCapabilities: Sendable, Equatable {
     /// Fastlane configuration (lanes, Appfile, CI invocations), when
     /// the repo has a Fastfile.
     public var fastlane: FastlaneInfo?
+    /// The CI/build pipeline to visualize — fastlane's flow when a
+    /// Fastfile exists, otherwise a Makefile's target graph. Nil when
+    /// the repo has neither.
+    public var ciFlow: CIFlow?
 
     public init(remote: RepoRemote? = nil, ghAvailable: Bool = false,
                 ghAuthenticated: Bool = false, hasConverge: Bool = false,
                 convergePath: String? = nil, hasMetrics: Bool = false,
                 hasLedger: Bool = false, hasWorkflows: Bool = false, hasDocs: Bool = false,
                 screenshots: [String] = [], pagesURL: String? = nil,
-                fastlane: FastlaneInfo? = nil) {
+                fastlane: FastlaneInfo? = nil, ciFlow: CIFlow? = nil) {
         self.remote = remote; self.ghAvailable = ghAvailable
         self.ghAuthenticated = ghAuthenticated; self.hasConverge = hasConverge
         self.convergePath = convergePath; self.hasMetrics = hasMetrics
         self.hasLedger = hasLedger; self.hasWorkflows = hasWorkflows; self.hasDocs = hasDocs
         self.screenshots = screenshots; self.pagesURL = pagesURL
-        self.fastlane = fastlane
+        self.fastlane = fastlane; self.ciFlow = ciFlow
     }
 
     public static let empty = FactoryCapabilities()

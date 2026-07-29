@@ -52,7 +52,9 @@ extension WorkspaceStore {
             if state.issues.isIdle && capsKnown { refreshIssues(id) }
         case .docs:
             if state.docs.isIdle { refreshDocs(id) }
-        case .codeGraph:
+        case .ciFlow, .codeGraph:
+            // Both need only capabilities (ensured by selectRepoSection);
+            // ciFlow reads caps.ciFlow, codeGraph the analysis state.
             break
         }
     }

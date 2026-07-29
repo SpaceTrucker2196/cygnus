@@ -30,9 +30,14 @@ public struct FastlaneInfo: Sendable, Equatable {
     public let appfile: [Setting]
     /// Raw fastlane invocations found in workflow ymls ("file: cmd").
     public let ciInvocations: [String]
+    /// The laid-out CI flowchart (trigger → lane → actions), for the
+    /// Metal flow renderer. Empty when the Fastfile has no lanes.
+    public let flow: CIFlow
 
-    public init(lanes: [Lane], appfile: [Setting], ciInvocations: [String]) {
-        self.lanes = lanes; self.appfile = appfile; self.ciInvocations = ciInvocations
+    public init(lanes: [Lane], appfile: [Setting], ciInvocations: [String],
+                flow: CIFlow = CIFlow(nodes: [], edges: [])) {
+        self.lanes = lanes; self.appfile = appfile
+        self.ciInvocations = ciInvocations; self.flow = flow
     }
 }
 
@@ -48,10 +53,13 @@ public enum FastlaneScan {
         let invoked = Set(invocations.flatMap {
             $0.split(separator: " ").map(String.init)
         })
-        return FastlaneInfo(
+        let info = FastlaneInfo(
             lanes: lanes(fromFastfile: fastText, ciInvoked: invoked),
             appfile: appText.map(settings(fromAppfile:)) ?? [],
             ciInvocations: invocations)
+        return FastlaneInfo(
+            lanes: info.lanes, appfile: info.appfile, ciInvocations: info.ciInvocations,
+            flow: FastlaneFlowBuilder.build(info: info, fastfileText: fastText))
     }
 
     /// `platform :ios do` scopes; `desc "…"` attaches to the next

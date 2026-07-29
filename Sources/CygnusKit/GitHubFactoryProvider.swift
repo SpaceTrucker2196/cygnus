@@ -52,6 +52,7 @@ public struct GitHubFactoryProvider: FactoryProvider {
         caps.hasDocs = FactoryDocScan.hasAnyDoc(repoAt: url)
         caps.screenshots = Self.fastlaneScreenshots(repoAt: url)
         caps.fastlane = FastlaneScan.scan(repoAt: url)
+        caps.ciFlow = Self.ciFlow(repoAt: url, fastlane: caps.fastlane)
         caps.pagesURL = await detectPagesURL(repoAt: url, caps: caps)
         return caps
     }
@@ -59,6 +60,21 @@ public struct GitHubFactoryProvider: FactoryProvider {
     private func directoryHasYAML(_ dir: URL) -> Bool {
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
         return entries.contains { $0.hasSuffix(".yml") || $0.hasSuffix(".yaml") }
+    }
+
+    /// The pipeline to chart: fastlane's flow when the Fastfile parses
+    /// to lanes, otherwise the top-level Makefile's target graph. Nil
+    /// when the repo has neither — the CI Flow section then says so.
+    static func ciFlow(repoAt url: URL, fastlane: FastlaneInfo?) -> CIFlow? {
+        if let flow = fastlane?.flow, !flow.isEmpty { return flow }
+        for name in ["Makefile", "makefile", "GNUmakefile"] {
+            let path = url.appendingPathComponent(name)
+            if let text = try? String(contentsOf: path, encoding: .utf8) {
+                let flow = MakeFlowBuilder.build(makefileText: text)
+                return flow.isEmpty ? nil : flow
+            }
+        }
+        return nil
     }
 
     /// Fastlane screenshot scan: everything image-like under
