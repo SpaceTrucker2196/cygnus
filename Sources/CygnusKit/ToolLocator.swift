@@ -38,6 +38,11 @@ public struct ToolLocator: Sendable, Equatable {
         case .swift: Self.swiftCandidates.first {
             FileManager.default.isExecutableFile(atPath: $0)
         }
+        // /usr/bin/make ships with the Command Line Tools; Homebrew's
+        // gmake is a fallback. Used to run/animate Makefile builds.
+        case .make: Self.makeCandidates.first {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }
         }
     }
 
@@ -59,6 +64,8 @@ public struct ToolLocator: Sendable, Equatable {
     static let gitCandidates = ["/usr/bin/git", "/opt/homebrew/bin/git", "/usr/local/bin/git"]
     static let ghCandidates = ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"]
     static let swiftCandidates = ["/usr/bin/swift"]
+    static let makeCandidates = ["/usr/bin/make", "/opt/homebrew/bin/gmake",
+                                 "/opt/homebrew/bin/make", "/usr/local/bin/gmake"]
 
     /// Resolve both tools. Override → candidate list → login-shell
     /// probe. Pure enough to unit-test by injecting `fileExists` and

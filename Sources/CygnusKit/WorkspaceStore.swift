@@ -55,6 +55,13 @@ public final class WorkspaceStore {
     /// Per-repo factory data, loaded on demand.
     public private(set) var factoryStates: [UUID: FactoryState] = [:]
 
+    /// Live CI-flow build state, keyed by repo. The renderer animates
+    /// the flow from this while a build runs. Mutated only via the
+    /// build-control methods in WorkspaceStore+Build.
+    public internal(set) var builds: [UUID: BuildProgress] = [:]
+    @ObservationIgnored var buildRunners: [UUID: BuildStreamRunner] = [:]
+    @ObservationIgnored var buildTrackers: [UUID: CIFlowBuildTracker] = [:]
+
     /// Hard 5 GB memory ceiling. Views read it for the usage meter;
     /// analysis honours it.
     public let memory: MemoryGovernor

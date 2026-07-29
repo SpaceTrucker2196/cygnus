@@ -34,13 +34,12 @@ struct MakeFlowTests {
 
         let sloth = targets.first { $0.name == "sloth" }!
         #expect(sloth.prerequisites == ["main.o", "net.o"])
-        // `$(CC)` is kept as its make-variable name — no shell/var
-        // expansion, that's honest to what the Makefile literally says.
-        #expect(sloth.recipe == ["CC"])
+        // `$(CC)` resolves through `CC = clang` to the real tool.
+        #expect(sloth.recipe == ["clang"])
 
         let mainO = targets.first { $0.name == "main.o" }!
-        // `@echo` keeps its command word (prefix stripped); then $(CC).
-        #expect(mainO.recipe == ["echo", "CC"])
+        // `@echo` keeps its command word (prefix stripped); then clang.
+        #expect(mainO.recipe == ["echo", "clang"])
 
         let all = targets.first { $0.name == "all" }!
         #expect(all.isPhony)
@@ -61,7 +60,7 @@ struct MakeFlowTests {
         #expect(flow.edges.contains { $0.from == "target:net.o" && $0.to == "target:sloth" })
 
         // Recipe commands become chained action nodes.
-        #expect(flow.nodes.contains { $0.kind == .action && $0.label == "CC" })
+        #expect(flow.nodes.contains { $0.kind == .action && $0.label == "clang" })
         #expect(flow.nodes.contains { $0.kind == .action && $0.label == "echo" })
     }
 

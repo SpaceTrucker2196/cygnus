@@ -14,6 +14,10 @@ import CygnusKit
 struct CIFlowMetalView: NSViewRepresentable {
     let flow: CIFlow
     @Binding var selection: String?
+    /// Per-node run state during a build (empty when not building).
+    var nodeStates: [String: NodeRunState] = [:]
+    /// Animation phase 0…1 driven by the caller while a build runs.
+    var pulse: Double = 0
 
     func makeCoordinator() -> FlowRenderer { FlowRenderer() }
 
@@ -30,6 +34,8 @@ struct CIFlowMetalView: NSViewRepresentable {
         view.layer?.isOpaque = true
         renderer.onSelect = { id in selection = id }
         renderer.setFlow(flow)
+        renderer.nodeStates = nodeStates
+        renderer.pulse = Float(pulse)
         return view
     }
 
@@ -37,6 +43,8 @@ struct CIFlowMetalView: NSViewRepresentable {
         let renderer = context.coordinator
         if renderer.flow != flow { renderer.setFlow(flow) }
         renderer.selection = selection
+        renderer.nodeStates = nodeStates
+        renderer.pulse = Float(pulse)
         view.needsDisplay = true
     }
 }
@@ -101,6 +109,10 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
     private(set) var flow = CIFlow(nodes: [], edges: [])
     var selection: String? { didSet { if selection != oldValue { /* redraw driven by view */ } } }
     var onSelect: ((String?) -> Void)?
+    /// Per-node build run state; empty means "not building" (static).
+    var nodeStates: [String: NodeRunState] = [:]
+    /// Animation phase 0…1 for the active node's glow.
+    var pulse: Float = 0
 
     // View transform: content points → drawable pixels.
     private var zoomLevel: CGFloat = 1     // pixels per content point
@@ -283,7 +295,8 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
         verts.reserveCapacity(placed.count * 6)
         let z = Float(zoomLevel)
         for pn in placed {
-            let (fill, border) = palette(pn.node.kind, selected: pn.node.id == selection)
+            let (fill, border) = palette(pn.node.kind, selected: pn.node.id == selection,
+                                         state: nodeStates[pn.node.id])
             let r = pn.rect
             let cx = r.midX, cy = r.midY
             let half = SIMD2(Float(r.width / 2) * z, Float(r.height / 2) * z)
@@ -301,9 +314,14 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
                     localPos: SIMD2(lx, ly), halfSize: half, radius: radius, pad: 0))
             }
         }
-        guard !verts.isEmpty else { return }
+        guard !verts.isEmpty,
+              let buffer = device.makeBuffer(
+                bytes: verts, length: MemoryLayout<NodeVertex>.stride * verts.count,
+                options: .storageModeShared) else { return }
         encoder.setRenderPipelineState(nodePipeline)
-        encoder.setVertexBytes(verts, length: MemoryLayout<NodeVertex>.stride * verts.count, index: 0)
+        // A real buffer, not setVertexBytes — that caps at 4 KB and
+        // aborts, and a flow of any size blows past it (64 B/vertex).
+        encoder.setVertexBuffer(buffer, offset: 0, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: verts.count)
     }
 
@@ -325,9 +343,12 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
                 ? SIMD4(1.0, 0.72, 0.30, 0.9) : SIMD4(0.45, 0.52, 0.60, 0.85)
             appendArrow(&verts, from: start, to: end, color: color, W: W, H: H)
         }
-        guard !verts.isEmpty else { return }
+        guard !verts.isEmpty,
+              let buffer = device.makeBuffer(
+                bytes: verts, length: MemoryLayout<EdgeVertex>.stride * verts.count,
+                options: .storageModeShared) else { return }
         encoder.setRenderPipelineState(edgePipeline)
-        encoder.setVertexBytes(verts, length: MemoryLayout<EdgeVertex>.stride * verts.count, index: 0)
+        encoder.setVertexBuffer(buffer, offset: 0, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: verts.count)
     }
 
@@ -385,13 +406,29 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
 
     // MARK: Colors
 
-    private func palette(_ kind: CIFlow.NodeKind, selected: Bool) -> (SIMD4<Float>, SIMD4<Float>) {
-        let base: SIMD3<Float>
+    private func palette(_ kind: CIFlow.NodeKind, selected: Bool,
+                         state: NodeRunState?) -> (SIMD4<Float>, SIMD4<Float>) {
+        var base: SIMD3<Float>
         switch kind {
         case .trigger:  base = SIMD3(0.32, 0.62, 1.0)
         case .lane:     base = SIMD3(0.66, 0.46, 1.0)
         case .action:   base = SIMD3(0.28, 0.86, 0.74)
         case .laneCall: base = SIMD3(1.0, 0.72, 0.30)
+        }
+        // A build in progress recolours nodes by run state: done goes
+        // green, failed red, active pulses bright, pending dims out so
+        // the lit path stands forward.
+        switch state {
+        case .done:    return (SIMD4(0.16, 0.42, 0.24, 1), SIMD4(0.30, 0.92, 0.45, 1))
+        case .failed:  return (SIMD4(0.42, 0.14, 0.16, 1), SIMD4(1.0, 0.32, 0.34, 1))
+        case .active:
+            let glow = 0.55 + 0.45 * pulse
+            let border = min(base + SIMD3(repeating: 0.25 * glow), SIMD3(repeating: 1))
+            return (SIMD4(base * (0.30 + 0.30 * glow), 1), SIMD4(border, 1))
+        case .pending:
+            return (SIMD4(base * 0.10, 1), SIMD4(base * 0.45, 1))
+        case nil:
+            break   // not building — fall through to the static look
         }
         let fillL: Float = selected ? 0.34 : 0.20
         let fill = SIMD4(base * fillL, 1)

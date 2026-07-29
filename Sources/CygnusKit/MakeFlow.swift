@@ -24,6 +24,7 @@ public enum MakeFlowBuilder {
     /// pattern rules (`%.o:`) and variable assignments are skipped.
     static func parseTargets(fromMakefile text: String) -> [ParsedTarget] {
         let joined = joinContinuations(text)
+        let vars = collectVars(joined)
         var phony: Set<String> = []
         var targets: [ParsedTarget] = []
         var current: (name: String, prereqs: [String], recipe: [String])?
@@ -42,7 +43,7 @@ public enum MakeFlowBuilder {
             // Recipe lines are tab-indented (make requires a real tab).
             if rawLine.first == "\t" {
                 let cmd = rawLine.drop { $0 == "\t" || $0 == " " }
-                if let word = recipeCommand(String(cmd)), current != nil,
+                if let word = recipeCommand(String(cmd), vars: vars), current != nil,
                    current!.recipe.count < maxRecipePerTarget {
                     current!.recipe.append(word)
                 }
@@ -90,7 +91,7 @@ public enum MakeFlowBuilder {
         return colon
     }
 
-    private static func recipeCommand(_ line: String) -> String? {
+    private static func recipeCommand(_ line: String, vars: [String: String]) -> String? {
         var s = line
         // Strip make's recipe prefixes: @ (silent), - (ignore errors),
         // + (always run).
@@ -98,15 +99,47 @@ public enum MakeFlowBuilder {
         s = s.trimmingCharacters(in: .whitespaces)
         guard let word = s.split(separator: " ").first.map(String.init),
               !word.isEmpty else { return nil }
-        // A leading $(VAR) like $(CC) — label it by the variable name.
+        // A leading $(VAR) like $(CC): resolve to its assigned value so
+        // the label reads "cc" (and matches what make echoes at build
+        // time). Unknown vars fall back to the bare variable name.
         if word.hasPrefix("$(") || word.hasPrefix("${") {
-            let inner = word.dropFirst(2).prefix { $0 != ")" && $0 != "}" }
-            return inner.isEmpty ? nil : String(inner)
+            let name = String(word.dropFirst(2).prefix { $0 != ")" && $0 != "}" })
+            guard !name.isEmpty else { return nil }
+            if let value = vars[name], let first = value.split(separator: " ").first {
+                return basename(String(first))
+            }
+            return name
         }
         // Bare assignment inside a recipe (rare) — skip.
         if word.contains("=") { return nil }
-        // Keep just the program's basename (./configure → configure).
-        return word.split(separator: "/").last.map(String.init) ?? word
+        return basename(word)
+    }
+
+    private static func basename(_ word: String) -> String {
+        // ./configure → configure; /usr/bin/install → install.
+        word.split(separator: "/").last.map(String.init) ?? word
+    }
+
+    /// Collect simple variable assignments (`X = y`, `:=`, `?=`, `+=`)
+    /// so recipe commands can resolve `$(X)`. First-wins for `?=`,
+    /// last-wins for the rest; recipe lines (tab-indented) are ignored.
+    static func collectVars(_ joined: String) -> [String: String] {
+        var vars: [String: String] = [:]
+        for line in joined.components(separatedBy: "\n") {
+            if line.first == "\t" { continue }
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard let match = t.firstMatch(
+                of: /^([A-Za-z_][A-Za-z0-9_]*)\s*(\?=|\+=|::=|:=|=)\s*(.*)$/)
+            else { continue }
+            let name = String(match.1), op = String(match.2)
+            let value = String(match.3).trimmingCharacters(in: .whitespaces)
+            switch op {
+            case "?=": if vars[name] == nil { vars[name] = value }
+            case "+=": vars[name] = (vars[name].map { $0 + " " } ?? "") + value
+            default:   vars[name] = value
+            }
+        }
+        return vars
     }
 
     /// Join `\`-continued lines into single logical lines.
