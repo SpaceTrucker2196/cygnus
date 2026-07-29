@@ -364,10 +364,12 @@ final class FlowRenderer: NSObject, MTKViewDelegate {
             let cx = pn.rect.midX, cy = pn.rect.midY
             let hx = Float(lw / 2) * z, hy = Float(lh / 2) * z
             let center = toPixel(cx, cy)
-            // Quad corners in pixels; v flipped (CGContext is y-up).
+            // Quad corners in pixels. The CoreGraphics bitmap's first
+            // byte row is the top of the text, and this MTKView is
+            // y-down (isFlipped), so the top screen corner samples v=0.
             let quads: [(Float, Float, Float, Float)] = [
-                (-hx, -hy, 0, 1), (hx, -hy, 1, 1), (hx, hy, 1, 0),
-                (-hx, -hy, 0, 1), (hx, hy, 1, 0), (-hx, hy, 0, 0),
+                (-hx, -hy, 0, 0), (hx, -hy, 1, 0), (hx, hy, 1, 1),
+                (-hx, -hy, 0, 0), (hx, hy, 1, 1), (-hx, hy, 0, 1),
             ]
             var verts: [LabelVertex] = []
             for (ox, oy, u, v) in quads {
