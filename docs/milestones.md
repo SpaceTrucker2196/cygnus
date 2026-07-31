@@ -127,7 +127,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       pure Swift and hermetically tested, and Barnes–Hut is ~200
       lines of it.
 
-      Output: a spike doc under `docs/spikes/` with a measured
-      comparison against the current layout on a real repo (frame
-      time and layout quality at 2k, 10k, 25k nodes), then a decision
-      recorded either way.
+      Port brief for the agent doing the Swift work, with the API
+      contract cygnus needs, licensing obligations, and acceptance
+      criteria: `docs/spikes/morpho-swift-port.md`. Result to record
+      there — a measured comparison against the current layout on a
+      real repo (frame time *and* layout quality at 2k, 10k, 25k,
+      65k nodes), then a decision either way.
