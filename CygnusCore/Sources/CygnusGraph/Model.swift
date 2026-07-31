@@ -66,6 +66,10 @@ extension EntityKind {
     public static let enumeration = EntityKind("core:enumeration")
     public static let function = EntityKind("core:function")
     public static let variable = EntityKind("core:variable")
+    /// A named unit of the build: a Make target, a fastlane lane. The
+    /// auxiliary software a system must be migrated *with* — coupling
+    /// to the platform, not to the code.
+    public static let buildTarget = EntityKind("core:buildTarget")
 }
 
 /// Relationship kind such as `core:declares` or `core:imports`.
@@ -91,6 +95,11 @@ extension RelationshipKind {
     public static let refersToSymbol = RelationshipKind("core:refersToSymbol")
     public static let inherits = RelationshipKind("core:inherits")
     public static let conformsTo = RelationshipKind("core:conformsTo")
+    /// Build target → what it is declared to need: a source file, or
+    /// another target. Kept distinct from `dependsOn` so build
+    /// coupling can be charted (or hidden) on its own, and so the
+    /// derived import rollups stay unambiguous.
+    public static let builds = RelationshipKind("core:builds")
 }
 
 // MARK: - Properties

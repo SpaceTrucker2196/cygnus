@@ -42,6 +42,13 @@ public enum StableKeys {
     public static func module(language: String, name: String) -> StableKey {
         StableKey("\(language):module:\(name)")
     }
+    /// A build target is scoped to the file that declares it: two
+    /// Makefiles may both define `all`, and they are not the same
+    /// thing.
+    public static func buildTarget(_ repo: RepositoryID, path: String,
+                                   name: String) -> StableKey {
+        StableKey("build:target:\(repo.raw)/\(path)#\(name)")
+    }
 }
 
 public enum Resolver {
@@ -62,6 +69,20 @@ public enum Resolver {
         func assert(_ entity: EntityAssertion) {
             guard assertedKeys.insert(entity.stableKey).inserted else { return }
             changes.entities.append(entity)
+        }
+
+        // Build-dependency resolution needs to know what exists before
+        // it can tell a real path from an unexpanded variable, and
+        // which names are sibling targets in the same build file. Both
+        // are one pass, done up front.
+        let manifestPaths = Set(manifest.files.map(\.path))
+        var buildTargets: [String: Set<String>] = [:]
+        for fileObs in files {
+            for (_, obs) in fileObs.observations where obs.kind == .buildRule {
+                if case .string(let name)? = obs.payload[ObservationPayload.buildTarget] {
+                    buildTargets[fileObs.file.path, default: []].insert(name)
+                }
+            }
         }
 
         // Repository root.
@@ -157,6 +178,38 @@ public enum Resolver {
                         source: fileKey, target: moduleKey, kind: .imports,
                         layer: .observed, supportedBy: [obsID]))
 
+                case .buildRule:
+                    guard case .string(let target)? = obs.payload[ObservationPayload.buildTarget]
+                    else { continue }
+                    let targetKey = StableKeys.buildTarget(
+                        repository, path: fileObs.file.path, name: target)
+                    assert(EntityAssertion(
+                        stableKey: targetKey, kind: .buildTarget, repository: repository,
+                        name: target, anchors: [obs.file], supportedBy: [obsID]))
+                    // The build file declares its targets, the same
+                    // relation a source file has to its declarations.
+                    changes.relationships.append(RelationshipAssertion(
+                        source: fileKey, target: targetKey, kind: .declares,
+                        layer: .observed, supportedBy: [obsID]))
+
+                    guard case .string(let dependency)?
+                            = obs.payload[ObservationPayload.buildDependency]
+                    else { continue }
+                    // Resolve the dependency against what the
+                    // repository actually contains. A name that
+                    // matches neither a file nor a sibling target is
+                    // an unexpanded variable or a tool on PATH —
+                    // recorded as an observation, but no edge is
+                    // invented for it.
+                    if let resolved = buildDependencyKey(
+                        dependency, declaredIn: fileObs.file.path,
+                        repository: repository, paths: manifestPaths,
+                        siblingTargets: buildTargets[fileObs.file.path] ?? []) {
+                        changes.relationships.append(RelationshipAssertion(
+                            source: targetKey, target: resolved, kind: .builds,
+                            layer: .observed, supportedBy: [obsID]))
+                    }
+
                 default:
                     continue
                 }
@@ -164,5 +217,42 @@ public enum Resolver {
         }
 
         return changes
+    }
+
+    /// What a build dependency names, if anything in this repository.
+    /// A sibling target wins over a file: `make test` where a `test`
+    /// target *and* a `test/` path exist means the target.
+    static func buildDependencyKey(_ dependency: String, declaredIn buildFile: String,
+                                   repository: RepositoryID, paths: Set<String>,
+                                   siblingTargets: Set<String>) -> StableKey? {
+        if siblingTargets.contains(dependency) {
+            return StableKeys.buildTarget(repository, path: buildFile, name: dependency)
+        }
+        // Paths in a build file are relative to its own directory.
+        let directory = (buildFile as NSString).deletingLastPathComponent
+        let candidates = directory.isEmpty
+            ? [dependency]
+            : ["\(directory)/\(dependency)", dependency]
+        for candidate in candidates {
+            let normalized = normalize(candidate)
+            if paths.contains(normalized) {
+                return StableKeys.file(repository, normalized)
+            }
+        }
+        return nil
+    }
+
+    /// Collapse `./` and `a/../b` so a declared path matches a
+    /// manifest path.
+    static func normalize(_ path: String) -> String {
+        var components: [String] = []
+        for component in path.split(separator: "/") {
+            switch component {
+            case ".": continue
+            case "..": if !components.isEmpty { components.removeLast() }
+            default: components.append(String(component))
+            }
+        }
+        return components.joined(separator: "/")
     }
 }

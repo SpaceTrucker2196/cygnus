@@ -15,4 +15,11 @@ public enum ObservationPayload {
     public static let module = "core:module"
     /// Included header path (C include observations).
     public static let header = "core:header"
+    /// Build target or lane name (build-rule observations).
+    public static let buildTarget = "core:buildTarget"
+    /// One thing the target is written to depend on, verbatim — a
+    /// path, another target, or a variable that was never expanded.
+    public static let buildDependency = "core:buildDependency"
+    /// Which build system stated it: "make", "fastlane".
+    public static let buildSystem = "core:buildSystem"
 }

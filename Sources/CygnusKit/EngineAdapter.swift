@@ -173,7 +173,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
     }
 
     static let projectedKinds: [RelationshipKind] = [
-        .containsPhysical, .declares, .imports, .references, .refersToSymbol,
+        .containsPhysical, .declares, .imports, .references, .refersToSymbol, .builds,
     ]
 
     /// Project one repository's current graph into a render-ready

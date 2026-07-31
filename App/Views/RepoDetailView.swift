@@ -191,6 +191,7 @@ struct DependencyGraphView: View {
                                             showExternal: store.showExternalModules)
         case .callers: GraphScene.callers(from: snapshot)
         case .symbols: GraphScene.symbols(from: snapshot)
+        case .build: GraphScene.build(from: snapshot)
         }
         if scene.nodes.isEmpty {
             emptyState
@@ -207,6 +208,12 @@ struct DependencyGraphView: View {
                 systemImage: "point.3.filled.connected.trianglepath.dotted",
                 description: Text("Only project-internal imports are charted. " +
                                   "Try Filters → Show External Modules."))
+        case .build:
+            ContentUnavailableView(
+                "No Build Files",
+                systemImage: "hammer",
+                description: Text("Nothing here builds anything: no Makefile or " +
+                                  "fastlane Fastfile was found in this repository."))
         case .callers, .symbols:
             ContentUnavailableView {
                 Label(store.graphContent == .callers ? "No Caller Links" : "No Symbol References",

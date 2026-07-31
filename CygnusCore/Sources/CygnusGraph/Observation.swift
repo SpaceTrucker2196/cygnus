@@ -20,6 +20,11 @@ extension ObservationKind {
     public static let importStatement = ObservationKind("core:importStatement")
     public static let reference = ObservationKind("core:reference")
     public static let fileFact = ObservationKind("core:fileFact")
+    /// A rule read from a build file: this target exists, and this is
+    /// one thing it is written to depend on. Literal — whether the
+    /// dependency names a real file is resolution's problem, not the
+    /// extractor's.
+    public static let buildRule = ObservationKind("core:buildRule")
 }
 
 /// Name + semantic version of the extractor that produced an

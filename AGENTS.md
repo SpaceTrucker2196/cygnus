@@ -25,12 +25,20 @@ renders it in 3D. Two products in one repo:
   - `CygnusGraph` depends on nothing (pure model + `GraphStore`
     protocol). Everyone depends on it.
   - `CygnusStore` is the **only** target that imports GRDB.
-  - Extractors (`CygnusExtractorSwift`, `CygnusExtractorTS`) emit
-    observations and never touch the store. Facts, not interpretation.
+  - Extractors (`CygnusExtractorSwift`, `CygnusExtractorTS`,
+    `CygnusExtractorIndex`, `CygnusExtractorBuild`) emit observations
+    and never touch the store. Facts, not interpretation.
+    (`CygnusExtractorTS` is tree-sitter, *not* TypeScript — it holds
+    the Python, C and Rust extractors.)
   - `CygnusDerive` reads the graph, writes derived-layer facts only.
     It cannot import extractors or providers.
-  - `CygnusEngine` is the facade; the CLI (`cygnus`) and the app-side
-    `CygnusKit` import only it.
+  - `CygnusEngine` is the facade. The CLI (`cygnus`) and the app-side
+    `CygnusKit` reach the engine only through it — but both also
+    import the low-level *vocabulary* targets (`CygnusGraph`,
+    `CygnusStore`, `CygnusQuery`, `CygnusObservation`,
+    `CygnusProviders`) to name kinds and read projections. The rule
+    that matters: **never import an extractor or a deriver from
+    outside the engine.**
 - `Sources/CygnusKit/` — app-side headless adapter package (root
   `Package.swift`): `WorkspaceStore`, `AnalysisCoordinator`,
   `GraphSnapshot`, `GraphEngine` protocol + `FixtureGraphEngine`,

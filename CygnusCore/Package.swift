@@ -48,6 +48,14 @@ let package = Package(
         .target(name: "CygnusObservation", dependencies: ["CygnusGraph", "CygnusProviders"]),
 
         // Extractors emit observations; they never touch the store.
+        // Build files (Makefiles, Fastfiles). No grammar dependency —
+        // both are line-oriented enough that a parser is cheaper than
+        // pinning another tree-sitter grammar.
+        .target(name: "CygnusExtractorBuild", dependencies: [
+            "CygnusGraph",
+            "CygnusObservation",
+            "CygnusProviders",
+        ]),
         .target(name: "CygnusExtractorSwift", dependencies: [
             "CygnusGraph",
             "CygnusObservation",
@@ -86,13 +94,15 @@ let package = Package(
         .target(name: "CygnusEngine", dependencies: [
             "CygnusGraph", "CygnusStore", "CygnusProviders", "CygnusObservation",
             "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusExtractorIndex",
-            "CygnusDerive", "CygnusQuery",
+            "CygnusExtractorBuild", "CygnusDerive", "CygnusQuery",
         ]),
 
         .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusGraph"]),
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
         .testTarget(name: "DeriveTests", dependencies: ["CygnusDerive", "CygnusStore"]),
+        .testTarget(name: "ExtractorBuildTests",
+                    dependencies: ["CygnusExtractorBuild", "CygnusProviders"]),
         .testTarget(name: "ExtractorIndexTests", dependencies: ["CygnusExtractorIndex"]),
         .testTarget(name: "ExtractorSwiftTests", dependencies: ["CygnusExtractorSwift", "CygnusProviders"]),
         .testTarget(name: "EngineTests", dependencies: ["CygnusEngine", "CygnusQuery"]),

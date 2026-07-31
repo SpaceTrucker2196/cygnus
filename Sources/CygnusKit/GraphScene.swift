@@ -335,6 +335,27 @@ public struct GraphScene: Sendable, Equatable {
         return "Other"
     }
 
+    /// The build coupling graph: build targets and the files and
+    /// sibling targets they are declared to need.
+    ///
+    /// *Kill It With Fire* calls this overgrowth — "a particular type
+    /// of coupling between the software and the layers of abstraction
+    /// making up the platform on which it runs" (p. 64) — and its
+    /// point is that this is the software you must migrate *first*,
+    /// which is hard to plan when it is invisible. A file here is one
+    /// a build target actually references, so the answer to "what
+    /// else moves if this moves" includes the build.
+    public static func build(from snapshot: GraphSnapshot) -> GraphScene {
+        let edges = snapshot.edges.filter { $0.kind == "core:builds" }
+        let ids = Set(edges.flatMap { [$0.from, $0.to] })
+        // Targets chart even with nothing resolved under them: a lane
+        // that couples to nothing is itself worth seeing.
+        let targets = snapshot.nodes.filter { $0.kind == "core:buildTarget" }
+        let nodes = snapshot.nodes.filter { ids.contains($0.id) }
+            + targets.filter { !ids.contains($0.id) }
+        return GraphScene(nodes: nodes, edges: edges)
+    }
+
     // MARK: - Path tracing
 
     /// Every node and edge lying on a shortest path from `from` to

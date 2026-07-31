@@ -35,6 +35,7 @@ public final class WorkspaceStore {
         case code = "Code"        // file/module dependency graph
         case callers = "Callers"  // class → class caller graph
         case symbols = "Symbols"  // decl → decl reference graph
+        case build = "Build"      // build targets → the files they need
     }
     public var graphContent: GraphContent = .code
 

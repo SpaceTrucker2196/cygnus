@@ -20,6 +20,9 @@ What the Flat graph charts.
   from symbol references. Needs an index build.
 - **Symbols** — declaration to declaration, unaggregated. Needs an
   index build.
+- **Build** — build targets and the files they are declared to need.
+  Makefile targets and fastlane lanes, read from the repository's own
+  build files.
 
 If Callers or Symbols is empty, the repository has not been built with
 an index yet. Build it, then re-analyze — you do not need to change a
@@ -107,6 +110,23 @@ Longer detours are left out.
 
 "No route" is a real answer, not a failure. Two things you assumed
 were connected turning out not to be is usually worth knowing.
+
+## The Build view
+
+Your build files are part of the system. A Makefile target that
+compiles twenty source files couples those files to the build, and
+that coupling is usually invisible until someone tries to change it —
+at which point the build turns out to be the thing that has to move
+first.
+
+**Build** charts it: each Make target and fastlane lane is a node,
+linked to the files it names and to the targets it depends on. Lanes
+that call other lanes wire up the same way.
+
+A dependency that names nothing in the repository draws no link.
+Unexpanded variables, tools on your `PATH`, and generated files are
+all common in build scripts, and inventing a node for them would be
+inventing a fact.
 
 ## History
 

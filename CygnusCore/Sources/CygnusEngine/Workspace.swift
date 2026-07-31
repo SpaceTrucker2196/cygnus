@@ -7,6 +7,7 @@ import CygnusDerive
 import CygnusExtractorSwift
 import CygnusExtractorTS
 import CygnusExtractorIndex
+import CygnusExtractorBuild
 
 // The engine facade. A workspace owns one graph database, one CAS,
 // and the extractor registry; the app-side CygnusKit and the CLI
@@ -61,7 +62,8 @@ public actor CygnusWorkspace {
         self.directory = directory
         self.store = try SQLiteGraphStore.onDisk(at: directory.appendingPathComponent("graph.sqlite"))
         self.contentStore = try ContentStore(root: directory.appendingPathComponent("cas"))
-        self.extractors = [SwiftExtractor(), PythonExtractor(), CExtractor(), RustExtractor()]
+        self.extractors = [SwiftExtractor(), PythonExtractor(), CExtractor(), RustExtractor(),
+                           BuildExtractor()]
     }
 
     // MARK: - Registration

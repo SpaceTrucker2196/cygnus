@@ -41,6 +41,45 @@ Two consequences that have bitten:
   pinned grammar dependency, and dependencies here need a MISSION.md
   audit recorded in `PROGRESS.md`.
 
+## Build files
+
+`CygnusExtractorBuild` reads Makefiles (`Makefile`, `GNUmakefile`,
+`*.mk`) and fastlane Fastfiles, emitting one `core:buildRule`
+observation per target and per declared dependency. Resolution turns
+those into `core:buildTarget` entities and `core:builds` edges to the
+files or sibling targets they name. See [[graph-projections]] for the
+Build scene, and the overgrowth argument in [[visualization-ideas]]
+for why the build belongs in the graph at all.
+
+Two deliberate limits:
+
+- A dependency that names nothing in the repository — an unexpanded
+  variable, a tool on `PATH`, a generated file — produces **no edge**.
+  The observation is still recorded, so the evidence is not lost, but
+  the graph does not invent a target for it.
+- Only *simple* variable assignments are expanded, one level deep. A
+  recursively-defined variable stays verbatim rather than becoming a
+  wrong answer.
+
+### The duplicated parser, on purpose
+
+`CygnusExtractorBuild.MakefileRules` and the app-side
+`MakeFlowBuilder` (`Sources/CygnusKit/MakeFlow.swift`) both parse Make
+rules, and that duplication is intentional for now.
+
+They want different things. The extractor wants targets and
+prerequisites — the coupling. The flow builder additionally wants
+recipe command words and their order, because it draws a flowchart,
+and its `CIFlow` model carries `column`/`row`: it is a rendering type
+and does not belong in the engine.
+
+The end state is better than either: once build facts are in the
+graph, the CI Flow chart should be a **projection of the graph** like
+every other view, and the second parser disappears. That needs recipe
+ordering in the graph, which is not there yet. Until then, one parser
+serves the graph and one serves the chart, and this note is the
+record of why.
+
 ## Adding a language
 
 For a tree-sitter language: a pinned grammar dependency, a query, and
