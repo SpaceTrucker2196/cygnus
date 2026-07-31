@@ -49,8 +49,23 @@ public struct GraphScene: Sendable, Equatable {
             ($0.kind == "core:imports" || $0.kind == "core:references")
                 && charted($0.from) && charted($0.to)
         }
+        // A source file charts whether or not it is wired. Deriving
+        // nodes from edges alone erased every file whose imports are
+        // all system frameworks — an Xcode app importing only SwiftUI
+        // and Foundation rendered as two nodes. Absence of a charted
+        // import is not absence of code.
+        //
+        // "Source file" is read off the evidence, not off the
+        // extension: a file charts when it declares something. That
+        // keeps READMEs, JSON and asset files out without a hardcoded
+        // language list.
+        let declaring = Set(snapshot.edges.lazy
+            .filter { $0.kind == "core:declares" }
+            .map(\.from))
         let ids = Set(edges.flatMap { [$0.from, $0.to] })
-        let nodes = snapshot.nodes.filter { ids.contains($0.id) }
+        let nodes = snapshot.nodes.filter {
+            ids.contains($0.id) || ($0.kind == "core:file" && declaring.contains($0.id))
+        }
         return GraphScene(nodes: nodes, edges: edges)
     }
 
