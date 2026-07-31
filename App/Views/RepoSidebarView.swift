@@ -121,7 +121,12 @@ struct RepoRowView: View {
             Spacer()
             statusGlyph
         }
+        // children: .ignore collapses the row into one element, so the
+        // name is no longer a static text anything can query. The
+        // identifier is the stable handle for UI tests; the label is
+        // for VoiceOver and free to change wording.
         .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("sidebar.repo.\(repo.displayName)")
         .accessibilityLabel(repo.displayName)
         .accessibilityValue(statusDescription)
     }

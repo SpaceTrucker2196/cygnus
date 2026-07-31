@@ -26,8 +26,11 @@ final class CygnusUITests: XCTestCase {
         app.launchArguments = ["--uitest-seed-repo"]
         app.launch()
 
-        // The seeded repo appears in the sidebar.
-        let repoRow = app.staticTexts["uitest-repo"]
+        // The seeded repo appears in the sidebar. Queried by
+        // identifier, not by static text: the row is a single
+        // accessibility element (children: .ignore), so its name is
+        // not a text node in the tree.
+        let repoRow = app.descendants(matching: .any)["sidebar.repo.uitest-repo"]
         if !repoRow.waitForExistence(timeout: 10) {
             print("UITREE-BEGIN\n\(app.debugDescription)\nUITREE-END")
         }
