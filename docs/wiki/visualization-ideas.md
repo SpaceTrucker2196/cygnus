@@ -130,6 +130,16 @@ computable from what we have and are the graph equivalent.
 Pair it with the ownership overlay from idea 3: unreachable *and*
 unowned is the strongest deletion candidate a codebase can offer.
 
+## Related research
+
+None of the above is blocked on rendering more nodes faster — they are
+all about drawing *less*, better. The separate question of scale is
+tracked as **R1** in `docs/milestones.md`: evaluating morpho
+(MorphoHDL) for its Barnes–Hut layout engine, struct-of-arrays
+discipline, and recursive-growth model. Its growth model is the one
+idea there that overlaps this page — growing a graph to a level of
+detail is another way of refusing to draw everything.
+
 ## Where these fit the 4+1 model
 
 The book recommends Kruchten's 4+1 architectural view model for

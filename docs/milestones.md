@@ -70,3 +70,64 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       halos with per-test attribution; issue actions (create
       production orders, comment, close/reopen via `gh`). Remaining
       candidate: converge triggering from the app.
+- [~] **S8** — Visualization from *Kill It With Fire* (plan:
+      `docs/wiki/visualization-ideas.md`). Done: scoped lenses —
+      depth-limited focus, shortest-path tracing, naming-vs-structure
+      conflicts; revision deltas on the graph and metric trends over
+      revisions *(2026-07-31)*. Remaining: overgrowth (build/CI files
+      as graph nodes), ownership + responsibility gaps as engine
+      facts.
+
+## Research
+
+- [ ] **R1** — **morpho** (`SpaceTrucker2196/morpho`, MorphoHDL):
+      evaluate for cygnus's layout and rendering. Not a code-graph
+      tool — an HDL that grows circuits by recursive graph rewriting —
+      but it solves *our* hardest rendering problems at a scale we
+      have not reached. Upstream is Google's Apache-2.0 MorphoHDL
+      (JS/WASM/C); the fork is described as "Swift Port", so the
+      porting question below may already be answered there.
+
+      What is actually worth taking, in order of value:
+
+      - `graphs_engine/src/main.c` — a **Barnes–Hut** N-body layout:
+        Morton-code (Z-order) sort into an implicit octree, SIMD
+        (`f32x4`) force accumulation, struct-of-arrays buffers,
+        tunable `theta`, 3D (x/y/z), 65,536 points. This is exactly
+        the "Deferred: Barnes–Hut for >2k-node scenes" note left in
+        **S4**. Our `LayoutEngine` uses grid-bucketed repulsion with a
+        cutoff radius — near-linear but approximate in a different
+        way, and it drops long-range structure that Barnes–Hut keeps.
+      - **Struct-of-arrays layout** as a discipline. Morpho's compiler
+        and layout engine are both SoA for cache locality; our layout
+        frames are arrays of structs. This is the same lesson the
+        Metal work already learned the hard way about buffer uploads.
+      - `hex_layout.js` — deterministic grid placement, a candidate
+        for stable "software cartography" positions that survive
+        re-analysis better than force layout alone.
+      - The **recursive growth** model: cells rewritten into subcells
+        with widths inferred rather than fixed. Cygnus has the same
+        shape in containment (repo → directory → file → declaration)
+        and currently flattens it. Worth asking whether the graph
+        should be *grown* at a level of detail rather than projected
+        whole — which is also the answer to the book's complaint about
+        whole-graph rendering.
+      - Signal propagation visualization, as prior art for animating
+        flow along edges — we already animate a build through the CI
+        flow, and dependency/blast-radius propagation is the same
+        idiom.
+
+      Constraints to settle before adopting anything: it is Apache 2.0
+      with Google LLC copyright and an explicit "not an officially
+      supported Google product" disclaimer, and the runtime is
+      JS/WASM/C. Taking the C engine directly means a new external
+      dependency and a **MISSION.md audit recorded in `PROGRESS.md`**;
+      porting the algorithm to Swift instead means no dependency and
+      no WASM in the app. Default to the port — `LayoutEngine` is
+      pure Swift and hermetically tested, and Barnes–Hut is ~200
+      lines of it.
+
+      Output: a spike doc under `docs/spikes/` with a measured
+      comparison against the current layout on a real repo (frame
+      time and layout quality at 2k, 10k, 25k nodes), then a decision
+      recorded either way.
