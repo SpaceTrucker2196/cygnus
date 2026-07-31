@@ -67,13 +67,38 @@ public struct SnapshotIndex: Sendable {
             .compactMap { build($0.id) }
     }
 
-    /// The focus set for a node: itself plus every direct neighbor
-    /// (dependencies and dependents). Drives the graph's blast-radius
-    /// highlight — "what touches this."
-    public func neighborhood(of id: String) -> Set<String> {
+    /// The focus set for a node: itself plus everything within
+    /// `depth` hops in either direction (dependencies and
+    /// dependents). Drives the graph's blast-radius highlight — "what
+    /// touches this."
+    ///
+    /// Depth is the whole point rather than a tuning knob. *Kill It
+    /// With Fire* argues that traversing the entire graph is "a lot of
+    /// work without a lot of payoff" and that mapping dependencies
+    /// two levels down is what actually informs a migration. Depth 1
+    /// is the immediate blast radius; `nil` is the unbounded reachable
+    /// set, which is the view the book is skeptical of.
+    ///
+    /// Breadth-first and iterative: a deep graph must not recurse
+    /// (the same rule `stronglyConnectedComponents()` follows).
+    public func neighborhood(of id: String, depth: Int? = 1) -> Set<String> {
+        guard byID[id] != nil else { return [id] }
         var result: Set<String> = [id]
-        for edge in outgoing[id] ?? [] { result.insert(edge.to) }
-        for edge in incoming[id] ?? [] { result.insert(edge.from) }
+        var frontier: [String] = [id]
+        var hop = 0
+        while !frontier.isEmpty, depth.map({ hop < $0 }) ?? true {
+            var next: [String] = []
+            for node in frontier {
+                for edge in outgoing[node] ?? [] where result.insert(edge.to).inserted {
+                    next.append(edge.to)
+                }
+                for edge in incoming[node] ?? [] where result.insert(edge.from).inserted {
+                    next.append(edge.from)
+                }
+            }
+            frontier = next
+            hop += 1
+        }
         return result
     }
 

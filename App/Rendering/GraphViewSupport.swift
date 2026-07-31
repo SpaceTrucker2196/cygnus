@@ -147,7 +147,11 @@ struct GraphControlBar: View {
     @Binding var coverageMode: Bool
     @Binding var cyclesOnly: Bool
     @Binding var expandFunctions: Bool
+    /// Hops of blast radius a selection lights up; nil = unbounded.
+    @Binding var focusDepth: Int?
+    @Binding var showDisagreements: Bool
     var cycleCount: Int = 0
+    var disagreementCount: Int = 0
 
     var body: some View {
         HStack(spacing: 14) {
@@ -206,6 +210,26 @@ struct GraphControlBar: View {
             .help("Orbit each node's functions around it as selectable satellites, colored by coverage")
             .accessibilityLabel("Expand functions")
             .accessibilityHint("Orbit each node's functions as selectable satellites")
+            Picker("Depth", selection: $focusDepth) {
+                Text("1").tag(Int?.some(1))
+                Text("2").tag(Int?.some(2))
+                Text("3").tag(Int?.some(3))
+                Text("All").tag(Int?.none)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 130)
+            .help("How many hops of dependencies and dependents a selection lights up")
+            .accessibilityLabel("Focus depth")
+            .accessibilityValue(focusDepth.map { "\($0) hops" } ?? "unbounded")
+            Toggle(isOn: $showDisagreements) {
+                Label("Naming\(disagreementCount > 0 ? " (\(disagreementCount))" : "")",
+                      systemImage: "exclamationmark.triangle")
+            }
+            .toggleStyle(.checkbox)
+            .help("Ring nodes whose name claims a role their structure contradicts — a Service nothing depends on, a View everything does")
+            .accessibilityLabel("Naming conflicts")
+            .accessibilityValue(disagreementCount == 0 ? "none"
+                                : "\(disagreementCount) nodes")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Graph controls")

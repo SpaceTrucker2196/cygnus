@@ -58,6 +58,9 @@ stays memorable instead of reshuffling every run.
 
 - **Click a node** — focus it. Its dependencies and dependents stay
   lit, everything else dims, and incident edges gain direction arrows.
+- **Option-click a node** — trace to it from the current selection.
+  Only the route stays lit, and the readout gives its length. Option-
+  click it again to clear.
 - **Click empty space** — clear the focus.
 - **Double-click** — reset zoom and pan and clear the selection.
 - **Drag** — pan.
@@ -75,3 +78,43 @@ stays memorable instead of reshuffling every run.
   disabled when there are none.
 - **Expand** — orbit each node's functions around it as selectable
   satellites, colored by coverage.
+- **Depth** — how many hops a selection lights up: 1, 2, 3, or All.
+- **Naming** — ring nodes whose name claims a role their structure
+  contradicts.
+
+## Depth, and why it defaults to 1
+
+A whole-graph picture is often the least useful view of a system. Most
+real questions are local — what does this touch, what would break if
+it changed — and answering them means seeing a bounded neighborhood,
+not everything at once.
+
+**Depth** bounds the blast radius. One hop is what directly touches
+the selection. Two is the level most migration work actually needs:
+your dependencies and theirs. **All** shows the entire reachable set,
+which is worth a look and rarely worth keeping on.
+
+## Tracing a route
+
+Focus answers "what touches this". Tracing answers "how does this
+reach that" — select one node, option-click another, and only the
+route between them stays lit.
+
+The trace shows every *shortest* route, so equal-length alternates
+appear together and you can see there is more than one way through.
+Longer detours are left out.
+
+"No route" is a real answer, not a failure. Two things you assumed
+were connected turning out not to be is usually worth knowing.
+
+## Naming conflicts
+
+**Pattern** grouping reads roles from names; **Role** grouping infers
+them from structure. The **Naming** toggle rings the nodes where those
+two disagree: a `…Service` that nothing depends on, a `…View` that
+everything does.
+
+A conflict is not automatically a bug. It means the name and the
+structure are telling different stories, and one of them is out of
+date — which is exactly the kind of thing that goes unnoticed for
+years.

@@ -335,6 +335,131 @@ public struct GraphScene: Sendable, Equatable {
         return "Other"
     }
 
+    // MARK: - Path tracing
+
+    /// Every node and edge lying on a shortest path from `from` to
+    /// `to`, following dependency direction.
+    public struct PathTrace: Sendable, Equatable {
+        public let nodes: Set<String>
+        public let edges: [GraphSnapshot.Edge]
+        /// Hops on the shortest route; nil when `to` is unreachable.
+        public let length: Int?
+        public var isConnected: Bool { length != nil }
+    }
+
+    /// "How does A reach B" — the question the graph could not answer.
+    /// Focus shows what touches a node; this shows the route between
+    /// two, which is what *Kill It With Fire* means by tracing the
+    /// flow through an application to complete one request.
+    ///
+    /// Returns the union of all *shortest* paths rather than every
+    /// path: enumerating all simple paths is exponential, while the
+    /// shortest-path union is two breadth-first sweeps and is the part
+    /// a reader can actually follow. An edge is on a shortest path
+    /// when `distance(from → u) + 1 + distance(v → to)` equals the
+    /// total — so alternates of equal length all survive.
+    public func paths(from: String, to: String, limit: Int = 500) -> PathTrace {
+        guard from != to else { return PathTrace(nodes: [from], edges: [], length: 0) }
+
+        var forward: [String: [GraphSnapshot.Edge]] = [:]
+        var backward: [String: [GraphSnapshot.Edge]] = [:]
+        for edge in edges where edge.from != edge.to {
+            forward[edge.from, default: []].append(edge)
+            backward[edge.to, default: []].append(edge)
+        }
+
+        func distances(from source: String,
+                       following adjacency: [String: [GraphSnapshot.Edge]],
+                       step: (GraphSnapshot.Edge) -> String) -> [String: Int] {
+            var distance: [String: Int] = [source: 0]
+            var frontier = [source]
+            while !frontier.isEmpty {
+                var next: [String] = []
+                for node in frontier {
+                    let hop = distance[node]! + 1
+                    for edge in adjacency[node] ?? [] where distance[step(edge)] == nil {
+                        distance[step(edge)] = hop
+                        next.append(step(edge))
+                    }
+                }
+                frontier = next
+            }
+            return distance
+        }
+
+        let fromStart = distances(from: from, following: forward, step: \.to)
+        guard let total = fromStart[to] else {
+            return PathTrace(nodes: [], edges: [], length: nil)
+        }
+        let toEnd = distances(from: to, following: backward, step: \.from)
+
+        var onPath: [GraphSnapshot.Edge] = []
+        var nodes: Set<String> = [from, to]
+        for edge in edges {
+            guard let head = fromStart[edge.from], let tail = toEnd[edge.to],
+                  head + 1 + tail == total
+            else { continue }
+            onPath.append(edge)
+            nodes.insert(edge.from)
+            nodes.insert(edge.to)
+        }
+        // Deterministic order, then bound: a wide graph can put a lot
+        // of equal-length alternates on the same route.
+        onPath.sort { ($0.from, $0.to) < ($1.from, $1.to) }
+        return PathTrace(nodes: nodes, edges: Array(onPath.prefix(limit)), length: total)
+    }
+
+    // MARK: - Naming versus structure
+
+    /// A node whose name claims one architectural role while its
+    /// position in the dependency graph says another.
+    public struct RoleDisagreement: Sendable, Equatable {
+        public let nodeID: String
+        /// Role read from naming convention (Pattern grouping).
+        public let named: String
+        /// Role inferred from fan-in/fan-out (Role grouping).
+        public let structural: String
+    }
+
+    /// What each naming convention implies about position in the
+    /// dependency flow. Roles absent here make no structural claim —
+    /// "Other" says nothing, and tests and modules are their own
+    /// layer.
+    private static let expectedRoles: [String: Set<String>] = [
+        // Depended upon: things that provide.
+        "Services": ["Core", "Hub"],
+        "Stores": ["Core", "Hub"],
+        "Models": ["Core", "Hub", "Leaf"],
+        // Depending: things that drive.
+        "Views": ["Entry", "Hub", "Leaf"],
+        "ViewModels": ["Entry", "Hub"],
+        "Controllers": ["Entry", "Hub"],
+    ]
+
+    /// Nodes where naming and structure disagree.
+    ///
+    /// *Kill It With Fire* calls the failure mode artificial
+    /// consistency: form and classification standardized over
+    /// function, so things that look alike are assumed to fit
+    /// together. Pattern grouping reads names; Role grouping reads the
+    /// graph. Rendering the disagreement is the cheapest way to catch
+    /// a name that has stopped describing what the code does — a
+    /// `…Service` nothing depends on, a `…View` everything does.
+    public func roleDisagreements(threshold t: Int = 2) -> [String: RoleDisagreement] {
+        let structural = structuralRoles(threshold: t)
+        var result: [String: RoleDisagreement] = [:]
+        for node in nodes {
+            let named = Self.patternRole(of: node)
+            guard let expected = Self.expectedRoles[named],
+                  let actual = structural[node.id],
+                  !expected.contains(actual)
+            else { continue }
+            result[node.id] = RoleDisagreement(
+                nodeID: node.id, named: named, structural: actual)
+        }
+        return result
+    }
+
     /// The cluster key a node belongs to under a grouping mode, or nil
     /// when the mode imposes no spatial grouping.
     public static func clusterKey(of node: GraphSnapshot.Node,

@@ -33,6 +33,13 @@ struct FlatGraphView: View {
     /// A legend group clicked to "explode" — it moves to center, the
     /// rest ring around it.
     @State private var explodedGroup: String?
+    /// How many hops of blast radius a selection lights up. nil = the
+    /// whole reachable set.
+    @State private var focusDepth: Int? = 1
+    /// Option-clicked node: the far end of a "how does A reach B"
+    /// trace from the current selection.
+    @State private var traceTarget: String?
+    @State private var showDisagreements = false
 
     private struct LayoutInput: Equatable {
         let scene: GraphScene
@@ -46,12 +53,32 @@ struct FlatGraphView: View {
         store.liveCoverage ?? store.attributedCoverage?.report ?? coverage
     }
 
-    /// The selected node's blast radius (itself + direct neighbors),
-    /// or nil when nothing is selected — the signal for focus mode.
+    /// The route between the selection and an option-clicked target,
+    /// when both ends are in the scene.
+    private var trace: GraphScene.PathTrace? {
+        guard let from = store.selectedNode, let to = traceTarget, from != to,
+              scene.nodes.contains(where: { $0.id == from }),
+              scene.nodes.contains(where: { $0.id == to })
+        else { return nil }
+        return scene.paths(from: from, to: to)
+    }
+
+    /// What stays lit. Tracing narrows to the route; otherwise it is
+    /// the selection's blast radius out to `focusDepth` hops. nil when
+    /// nothing is selected — the signal for focus mode being off.
     private var focusSet: Set<String>? {
         guard let selected = store.selectedNode,
               scene.nodes.contains(where: { $0.id == selected }) else { return nil }
-        return store.currentIndex?.neighborhood(of: selected) ?? [selected]
+        if let trace { return trace.isConnected ? trace.nodes : [selected, traceTarget!] }
+        return store.currentIndex?.neighborhood(of: selected, depth: focusDepth)
+            ?? [selected]
+    }
+
+    /// Nodes whose name claims a role their structure contradicts.
+    /// Computed only while the lens is on — it is a full pass over the
+    /// scene.
+    private var disagreements: [String: GraphScene.RoleDisagreement] {
+        showDisagreements ? scene.roleDisagreements() : [:]
     }
 
     var body: some View {
@@ -59,9 +86,15 @@ struct FlatGraphView: View {
             canvas(in: geometry.size)
                 .gesture(dragGesture)
                 .simultaneousGesture(magnifyGesture)
+                // Option-click sets the far end of a trace. Checked
+                // before the plain tap so the modifier wins.
+                .gesture(SpatialTapGesture().modifiers(.option).onEnded { value in
+                    setTraceTarget(at: value.location, in: geometry.size)
+                })
                 .onTapGesture { location in select(at: location, in: geometry.size) }
                 .onTapGesture(count: 2) {
                     store.selectedNode = nil
+                    traceTarget = nil
                     withAnimation(.smooth(duration: 0.5)) { zoom = 1; pan = .zero }
                 }
                 .onAppear { viewSize = geometry.size }
@@ -92,9 +125,17 @@ struct FlatGraphView: View {
             GraphControlBar(zoom: $zoom, labelMode: $labelMode, labelSize: $labelSize,
                             legendShown: $legendShown, grouping: $grouping,
                             coverageMode: $coverageMode, cyclesOnly: $cyclesOnly,
-                            expandFunctions: $expandFunctions, cycleCount: cyclicEdges.count)
+                            expandFunctions: $expandFunctions, focusDepth: $focusDepth,
+                            showDisagreements: $showDisagreements,
+                            cycleCount: cyclicEdges.count,
+                            disagreementCount: disagreements.count)
         }
-        .overlay(alignment: .topLeading) { coverageStatus }
+        .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 6) {
+                coverageStatus
+                traceStatus
+            }
+        }
         .overlay(alignment: .bottomLeading) {
             if legendShown {
                 let clusters = scene.clusters(grouping: grouping)
@@ -104,6 +145,44 @@ struct FlatGraphView: View {
             }
         }
         .overlay(alignment: .bottomTrailing) { statusReadout }
+    }
+
+    // MARK: - Trace overlay
+
+    /// Reads out the route being traced. An unreachable pair is a
+    /// finding, not an error — "nothing connects these" is often the
+    /// answer someone is looking for.
+    @ViewBuilder private var traceStatus: some View {
+        if let target = traceTarget, let label = scene.nodes.first(where: { $0.id == target })?.label {
+            let from = scene.nodes.first { $0.id == store.selectedNode }?.label
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.turn.up.right.diamond")
+                if let from {
+                    if let trace, trace.isConnected {
+                        Text("\(from) → \(label): \(trace.length!) hops, \(trace.edges.count) edges")
+                    } else {
+                        Text("\(from) → \(label): no route").foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text("Trace to \(label) — select a starting node")
+                        .foregroundStyle(.secondary)
+                }
+                Button("Clear") { traceTarget = nil }.buttonStyle(.link)
+            }
+            .font(.caption)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(.regularMaterial, in: Capsule())
+            .padding(8)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("graph.traceStatus")
+        }
+    }
+
+    /// Option-click picks the far end of a trace; option-clicking it
+    /// again, or empty space, clears it.
+    private func setTraceTarget(at location: CGPoint, in size: CGSize) {
+        guard let hit = node(at: location, in: size) else { traceTarget = nil; return }
+        traceTarget = (traceTarget == hit) ? nil : hit
     }
 
     // MARK: - Coverage overlay (status + live run)
@@ -431,6 +510,17 @@ struct FlatGraphView: View {
                 context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
                                with: .color(.accentColor), lineWidth: 2)
             }
+            // Name-versus-structure conflict: a dashed ring, distinct
+            // from coverage arcs and the selection ring.
+            if !dimmed, disagreements[node.id] != nil {
+                context.stroke(Path(ellipseIn: rect.insetBy(dx: -6, dy: -6)),
+                               with: .color(.orange),
+                               style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+            }
+            if node.id == traceTarget {
+                context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
+                               with: .color(.purple), lineWidth: 2)
+            }
             // Everything in the focused blast radius labels, so a
             // selection is fully readable, not just the node itself.
             let inFocus = focus?.contains(node.id) ?? false
@@ -551,6 +641,13 @@ struct FlatGraphView: View {
     // MARK: - Interaction
 
     private func select(at location: CGPoint, in size: CGSize) {
+        // Tapping empty space clears the focus.
+        store.selectedNode = node(at: location, in: size)
+    }
+
+    /// Nearest node to a point, or nil for empty space. Shared by
+    /// plain click (select) and option-click (trace target).
+    private func node(at location: CGPoint, in size: CGSize) -> String? {
         var best: (id: String, distance: CGFloat)?
         // Satellites sit on top — hit-test them first, with a tight
         // radius so they don't steal clicks meant for their parent.
@@ -573,8 +670,7 @@ struct FlatGraphView: View {
                 }
             }
         }
-        // Tapping empty space clears the focus.
-        store.selectedNode = best?.id
+        return best?.id
     }
 
     private var dragGesture: some Gesture {
