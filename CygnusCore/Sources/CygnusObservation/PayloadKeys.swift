@@ -22,4 +22,10 @@ public enum ObservationPayload {
     public static let buildDependency = "core:buildDependency"
     /// Which build system stated it: "make", "fastlane".
     public static let buildSystem = "core:buildSystem"
+    /// Author display name, and the address that identifies them.
+    public static let authorName = "core:authorName"
+    public static let authorEmail = "core:authorEmail"
+    /// Commit hash and ISO-8601 author date of an authorship touch.
+    public static let commitSHA = "core:commitSHA"
+    public static let commitDate = "core:commitDate"
 }

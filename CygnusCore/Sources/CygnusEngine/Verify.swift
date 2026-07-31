@@ -33,7 +33,7 @@ extension CygnusWorkspace {
         _ = try await fresh.index(freshRepo)
 
         let incremental = try Self.normalizedFacts(store: store, repo: repoID)
-        let rebuilt = try Self.normalizedFacts(store: await fresh.store, repo: freshRepo)
+        let rebuilt = try Self.normalizedFacts(store: fresh.store, repo: freshRepo)
 
         return VerifyReport(
             repository: repoID,

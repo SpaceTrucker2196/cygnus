@@ -174,6 +174,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
 
     static let projectedKinds: [RelationshipKind] = [
         .containsPhysical, .declares, .imports, .references, .refersToSymbol, .builds,
+        .authoredBy, .ownedBy,
     ]
 
     /// Project one repository's current graph into a render-ready
@@ -215,7 +216,11 @@ public struct WorkspaceGraphEngine: GraphEngine {
         var edges: [GraphSnapshot.Edge] = []
         for edge in keptEdges {
             guard let from = keyByID[edge.source], let to = keyByID[edge.target] else { continue }
+            // Whatever count the edge aggregates becomes its weight —
+            // references for enrichment edges, commits for authorship.
             let weight: Int = if case .int(let n)? = edge.properties["core:referenceCount"] {
+                Int(n)
+            } else if case .int(let n)? = edge.properties["core:commitCount"] {
                 Int(n)
             } else { 1 }
             edges.append(GraphSnapshot.Edge(from: from, to: to,

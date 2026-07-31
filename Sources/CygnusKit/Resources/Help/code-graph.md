@@ -49,6 +49,8 @@ follow the grouping.
   names involved: **Core** (depended on, depends on little), **Hub**
   (both), **Entry** (depends on much, depended on by little), **Leaf**
   (barely connected).
+- **Owner** — who owns each file, from git history: an author's name,
+  **Shared**, or **Unowned**.
 - **None** — pure force layout.
 
 Running Pattern and Role together is the point: where the naming
@@ -110,6 +112,35 @@ Longer detours are left out.
 
 "No route" is a real answer, not a failure. Two things you assumed
 were connected turning out not to be is usually worth knowing.
+
+## Ownership, and the gaps in it
+
+Cygnus reads your git history during analysis and records who has
+committed to each file. **Owner** grouping colours the graph by that.
+
+Three states, and the last two are the point:
+
+- **An author's name** — one person holds most of that file's
+  history. Clear ownership.
+- **Shared** — several people work on it, none of them dominant.
+- **Unowned** — nobody has committed to it in the history that was
+  read.
+
+Shared files are worth looking at first. Work that falls between two
+owners is where nobody feels responsible, and it is where debt and
+unpatched problems collect. A **Shared** region sitting on a boundary
+between two owners' territory is the shape to look for; a shared
+`Makefile` or a shared core header is the classic example.
+
+Ownership is inferred, and deliberately conservative: a file is only
+assigned an owner when one author holds at least 60% of its commits.
+Below that, Cygnus says **Shared** rather than picking a winner —
+"nobody clearly owns this" is an answer, not a failure to compute one.
+
+Analysis reads the most recent 2,000 commits. Recent history is the
+more honest signal anyway: who has touched something lately says more
+about who owns it than who wrote it years ago. Merge commits are
+excluded, so whoever merges does not appear to own everything.
 
 ## The Build view
 

@@ -76,6 +76,17 @@ Two details worth knowing:
 
 See [[index-enrichment]] for where the store lives.
 
+A second enrichment pass reads **git authorship** on the same
+best-effort contract: one observation per (commit, file) touch,
+derived `core:authoredBy` edges carrying commit counts, and inferred
+`core:ownedBy` where a single author holds at least 60% of a file's
+history. Below that threshold a file is *shared* and gets no owner —
+which is the finding, not a gap in the computation. Merge commits are
+excluded, so whoever merges does not appear to own everything, and
+only the most recent 2,000 commits are read: this is the first
+history-sized data the graph holds, and recent history is the more
+honest ownership signal anyway.
+
 ## 6. Commit
 
 One revision, one transaction. The revision note says what happened

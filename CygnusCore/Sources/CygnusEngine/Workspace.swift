@@ -317,6 +317,21 @@ public actor CygnusWorkspace {
             FileHandle.standardError.write(Data("enrichment skipped: \(error)\n".utf8))
         }
 
+        // Authorship: who has worked on what, and where ownership
+        // concentrates. Best-effort on the same contract — a repo
+        // without git, or with git unavailable, simply has no
+        // ownership facts.
+        do {
+            if let owned = try enrichOwnership(
+                repoID: repoID, root: root, snapshot: snapshot,
+                currentPaths: Set(manifest.files.map(\.path)),
+                displayName: repo.displayName, progress: progress) {
+                finalRevision = owned
+            }
+        } catch {
+            FileHandle.standardError.write(Data("ownership skipped: \(error)\n".utf8))
+        }
+
         return IndexResult(
             repository: repoID, revision: finalRevision, snapshot: snapshot,
             filesAnalyzed: manifest.files.count,

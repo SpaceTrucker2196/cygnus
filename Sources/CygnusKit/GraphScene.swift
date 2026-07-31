@@ -240,6 +240,9 @@ public struct GraphScene: Sendable, Equatable {
         /// Structural role inferred from the dependency graph itself —
         /// no names. Where a node sits in the flow (Core/Hub/Entry/Leaf).
         case role = "Role"
+        /// Who owns the file: an author, Shared, or Unowned. Needs
+        /// git history, which the engine reads during analysis.
+        case owner = "Owner"
         /// No spatial grouping; pure force layout (color still by area).
         case none = "None"
     }
@@ -430,6 +433,50 @@ public struct GraphScene: Sendable, Equatable {
         return PathTrace(nodes: nodes, edges: Array(onPath.prefix(limit)), length: total)
     }
 
+    // MARK: - Ownership
+
+    /// File → the cluster its ownership puts it in: an owner's name,
+    /// `Shared`, or `Unowned`.
+    ///
+    /// Reads the snapshot rather than a scene, because ownership edges
+    /// are not part of the dependency projection — the point is to
+    /// colour the *dependency* graph by who owns it.
+    ///
+    /// The three states are the finding, not a fallback:
+    ///   - **owned** — one author holds most of the file's history.
+    ///   - **Shared** — several authors, none dominant. *Kill It With
+    ///     Fire*: "the most productive places to mine are gaps between
+    ///     what two components of the same organization officially
+    ///     own" (p. 98).
+    ///   - **Unowned** — in the repository, but nobody has committed
+    ///     to it within the history that was read.
+    public static func owners(from snapshot: GraphSnapshot) -> [String: String] {
+        let names = Dictionary(uniqueKeysWithValues: snapshot.nodes
+            .filter { $0.kind == "core:person" }
+            .map { ($0.id, $0.label) })
+        var owner: [String: String] = [:]
+        var authored = Set<String>()
+        for edge in snapshot.edges {
+            switch edge.kind {
+            case "core:ownedBy": owner[edge.from] = names[edge.to] ?? "Owned"
+            case "core:authoredBy": authored.insert(edge.from)
+            default: continue
+            }
+        }
+        var result: [String: String] = [:]
+        for node in snapshot.nodes where node.kind == "core:file" {
+            result[node.id] = owner[node.id]
+                ?? (authored.contains(node.id) ? "Shared" : "Unowned")
+        }
+        return result
+    }
+
+    /// Files several people work on with no clear owner — the seam
+    /// where responsibility falls between two parties.
+    public static func responsibilityGaps(from snapshot: GraphSnapshot) -> Set<String> {
+        Set(owners(from: snapshot).filter { $0.value == "Shared" }.keys)
+    }
+
     // MARK: - Naming versus structure
 
     /// A node whose name claims one architectural role while its
@@ -495,8 +542,10 @@ public struct GraphScene: Sendable, Equatable {
             else { "Production" }
         case .pattern: patternRole(of: node)
         // Structural role needs whole-graph context — computed in
-        // bulk by clusters(grouping:), not per node.
-        case .role: nil
+        // bulk by clusters(grouping:), not per node. Ownership needs
+        // more still: edges the dependency scene does not carry, so
+        // it comes from owners(from:) against the snapshot.
+        case .role, .owner: nil
         }
     }
 

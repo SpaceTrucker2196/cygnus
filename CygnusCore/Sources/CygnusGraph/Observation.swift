@@ -25,6 +25,9 @@ extension ObservationKind {
     /// dependency names a real file is resolution's problem, not the
     /// extractor's.
     public static let buildRule = ObservationKind("core:buildRule")
+    /// One authorship touch: this commit, by this author, changed
+    /// this file. Literal — it says nothing about ownership.
+    public static let authorship = ObservationKind("core:authorship")
 }
 
 /// Name + semantic version of the extractor that produced an

@@ -75,6 +75,16 @@ struct FlatGraphView: View {
             ?? [selected]
     }
 
+    /// Cluster map for the current grouping. Owner grouping is the
+    /// exception that needs the whole snapshot: ownership edges are
+    /// not part of the dependency projection, and the point is to
+    /// colour the dependency graph by who owns it.
+    private var clusters: [String: String] {
+        guard grouping == .owner else { return scene.clusters(grouping: grouping) }
+        guard let snapshot = store.currentIndex?.snapshot else { return [:] }
+        return GraphScene.owners(from: snapshot)
+    }
+
     /// Nodes whose name claims a role their structure contradicts.
     /// Computed only while the lens is on — it is a full pass over the
     /// scene.
@@ -113,7 +123,7 @@ struct FlatGraphView: View {
         .task(id: LayoutInput(scene: scene, grouping: grouping, explodedGroup: explodedGroup)) {
             cyclicEdges = scene.cyclicEdges
             for await next in LayoutEngine(scene: scene, initial: frame.positions,
-                                           clusters: scene.clusters(grouping: grouping),
+                                           clusters: clusters,
                                            focusCluster: explodedGroup).frames() {
                 frame = next
             }
@@ -145,7 +155,6 @@ struct FlatGraphView: View {
         }
         .overlay(alignment: .bottomLeading) {
             if legendShown {
-                let clusters = scene.clusters(grouping: grouping)
                 GraphLegendView(scene: scene, cycleCount: cyclicEdges.count,
                                 colors: GraphPalette.colors(nodes: scene.nodes, clusters: clusters),
                                 explodedGroup: $explodedGroup)
@@ -255,7 +264,6 @@ struct FlatGraphView: View {
     private func canvas(in size: CGSize) -> some View {
         Canvas { context, size in
             let transform = viewTransform(in: size)
-            let clusters = scene.clusters(grouping: grouping)
             let colors = GraphPalette.colors(nodes: scene.nodes, clusters: clusters)
             let focus = focusSet
             let byID = Dictionary(uniqueKeysWithValues: scene.nodes.map { ($0.id, $0) })

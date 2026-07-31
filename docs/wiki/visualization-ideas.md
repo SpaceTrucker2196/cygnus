@@ -6,6 +6,12 @@ updated: 2026-07-31
 
 # Visualization Ideas from *Kill It With Fire*
 
+> **Status (2026-07-31):** ideas 1, 2, 3, 4, 5 and 7 are built — see
+> **S8** in `docs/milestones.md`. Idea 6 (partial-migration front) and
+> idea 8 (unreachable code) are not. The reasoning below is kept as
+> written, because *why* each view exists outlives the fact that it
+> now exists.
+
 Source: Marianne Bellotti, *Kill It With Fire* (No Starch, 2021). Page
 numbers below are the print pages. The book is about modernizing aging
 systems, so its questions are exactly the questions

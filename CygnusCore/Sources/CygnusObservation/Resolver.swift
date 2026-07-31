@@ -42,6 +42,11 @@ public enum StableKeys {
     public static func module(language: String, name: String) -> StableKey {
         StableKey("\(language):module:\(name)")
     }
+    /// A contributor, identified by address. Not repository-scoped —
+    /// the same person appears in every repo they touch.
+    public static func person(_ identity: String) -> StableKey {
+        StableKey("person:\(identity)")
+    }
     /// A build target is scoped to the file that declares it: two
     /// Makefiles may both define `all`, and they are not the same
     /// thing.

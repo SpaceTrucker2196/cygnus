@@ -70,6 +70,9 @@ extension EntityKind {
     /// auxiliary software a system must be migrated *with* — coupling
     /// to the platform, not to the code.
     public static let buildTarget = EntityKind("core:buildTarget")
+    /// A contributor. Not repository-scoped: the same person works
+    /// across repositories, and that is the interesting part.
+    public static let person = EntityKind("core:person")
 }
 
 /// Relationship kind such as `core:declares` or `core:imports`.
@@ -100,6 +103,14 @@ extension RelationshipKind {
     /// coupling can be charted (or hidden) on its own, and so the
     /// derived import rollups stay unambiguous.
     public static let builds = RelationshipKind("core:builds")
+    /// File → person: this person has committed to this file, with a
+    /// commit count. Derived — arithmetic over authorship
+    /// observations.
+    public static let authoredBy = RelationshipKind("core:authoredBy")
+    /// File → person: this person is *the* owner. Inferred — a
+    /// judgement about concentration, held to a higher bar than the
+    /// counting that supports it.
+    public static let ownedBy = RelationshipKind("core:ownedBy")
 }
 
 // MARK: - Properties

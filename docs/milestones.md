@@ -70,13 +70,20 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       halos with per-test attribution; issue actions (create
       production orders, comment, close/reopen via `gh`). Remaining
       candidate: converge triggering from the app.
-- [~] **S8** — Visualization from *Kill It With Fire* (plan:
-      `docs/wiki/visualization-ideas.md`). Done: scoped lenses —
-      depth-limited focus, shortest-path tracing, naming-vs-structure
-      conflicts; revision deltas on the graph and metric trends over
-      revisions *(2026-07-31)*. Remaining: overgrowth (build/CI files
-      as graph nodes), ownership + responsibility gaps as engine
-      facts.
+- [x] **S8** — Visualization from *Kill It With Fire* (plan:
+      `docs/wiki/visualization-ideas.md`), all four phases landed
+      *(2026-07-31)*: scoped lenses (depth-limited focus,
+      shortest-path tracing, naming-vs-structure conflicts); revision
+      deltas on the graph and metric trends over revisions; overgrowth
+      (`CygnusExtractorBuild` → `core:buildTarget` / `core:builds`,
+      Build content mode); ownership as engine facts (git authorship
+      observations → derived `core:authoredBy` with counts → inferred
+      `core:ownedBy`, Owner grouping showing owner / Shared /
+      Unowned). Measured on sloth: 236 build edges, 3 people, 484
+      files with authorship, 32 shared with no dominant owner.
+      Remaining candidates: departed-author staleness (needs dates in
+      the snapshot), and CI Flow as a graph projection so the second
+      Make parser can go.
 
 ## Research
 

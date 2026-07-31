@@ -32,6 +32,12 @@ Core relationship kinds:
   [[index-enrichment]].
 - `core:refersToSymbol` — declaration → declaration, compiler-resolved.
 - `core:inherits`, `core:conformsTo` — declared type relationships.
+- `core:builds` — build target → what it needs. See [[extractors]].
+- `core:authoredBy` — file → person, with a commit count. Derived.
+- `core:ownedBy` — file → person. **Inferred**, and the clearest
+  example of why the layers exist: git says who committed (observed),
+  counting is arithmetic (derived), and "this person owns it" is a
+  judgement about concentration that could be wrong.
 
 Properties are typed values attached to entities and relationships
 (for example the reference count that sets edge thickness in
