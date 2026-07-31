@@ -117,9 +117,17 @@ public actor IndexStoreReader {
         return result
     }
 
+    /// The compiled index store for a repository, if a build has
+    /// produced one. SPM keeps it in-tree; an Xcode project keeps it
+    /// in DerivedData, outside the repo entirely. In-tree wins — it is
+    /// unambiguously this checkout's.
+    public static func storePath(under root: URL) -> String? {
+        packageStorePath(under: root) ?? derivedDataStorePath(under: root)
+    }
+
     /// The SPM index store for a package checkout, if a build has
     /// produced one. Root package and first-level nested packages.
-    public static func storePath(under root: URL) -> String? {
+    public static func packageStorePath(under root: URL) -> String? {
         let fm = FileManager.default
         var packageDirs = [root]
         if let entries = try? fm.contentsOfDirectory(
@@ -141,6 +149,102 @@ public actor IndexStoreReader {
             }
         }
         return nil
+    }
+
+    /// The Xcode index store for a project checkout, if a build has
+    /// produced one. Xcode writes it to DerivedData — outside the
+    /// repo, under a name-plus-hash directory — so the repo itself
+    /// carries no trace of it. The mapping back is each build
+    /// directory's `info.plist`, whose `WorkspacePath` names the
+    /// `.xcodeproj`/`.xcworkspace` it was built from; a directory
+    /// belongs to this repo when that path lies inside `root`.
+    ///
+    /// Two containers are searched: Xcode's default location, and
+    /// `<root>/DerivedData` for the "relative to workspace" build
+    /// setting. Most recently accessed wins when a repo has several
+    /// (renamed project, multiple workspaces).
+    /// A place Xcode may keep build directories. `shared` marks a
+    /// container holding every project's builds — there, a directory
+    /// must prove it belongs to this repo before we read it.
+    public struct DerivedDataContainer: Sendable {
+        public let url: URL
+        public let shared: Bool
+        public init(url: URL, shared: Bool) {
+            self.url = url
+            self.shared = shared
+        }
+    }
+
+    public static func defaultDerivedDataContainers(under root: URL) -> [DerivedDataContainer] {
+        [DerivedDataContainer(
+            url: FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Developer/Xcode/DerivedData"),
+            shared: true),
+         DerivedDataContainer(
+            url: root.appendingPathComponent("DerivedData"), shared: false)]
+    }
+
+    public static func derivedDataStorePath(
+        under root: URL,
+        containers: [DerivedDataContainer]? = nil) -> String? {
+        let fm = FileManager.default
+        let rootPath = root.standardizedFileURL.path
+        let containers = containers ?? defaultDerivedDataContainers(under: root)
+
+        var candidates: [(store: String, accessed: Date)] = []
+        for entry in containers {
+            let container = entry.url
+            // "Relative to workspace" may write the store directly in
+            // the container, with no per-project directory below it.
+            if !entry.shared {
+                let store = container.appendingPathComponent("Index.noindex/DataStore")
+                if fm.fileExists(atPath: store.path) {
+                    let accessed = (try? store.resourceValues(
+                        forKeys: [.contentModificationDateKey]).contentModificationDate)
+                    candidates.append((store.path, accessed ?? .distantPast))
+                }
+            }
+            guard let builds = try? fm.contentsOfDirectory(
+                at: container, includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]) else { continue }
+
+            for build in builds {
+                guard (try? build.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                else { continue }
+                let store = build.appendingPathComponent("Index.noindex/DataStore")
+                guard fm.fileExists(atPath: store.path) else { continue }
+
+                let info = plist(at: build.appendingPathComponent("info.plist"))
+                // In a shared container a build directory is only
+                // ours if its workspace lives under root. Under
+                // <root>/DerivedData it is ours by construction — and
+                // that layout may write no info.plist at all.
+                if entry.shared {
+                    guard let workspace = info?["WorkspacePath"] as? String,
+                          isContained(URL(fileURLWithPath: workspace).standardizedFileURL.path,
+                                      in: rootPath)
+                    else { continue }
+                }
+                let accessed = info?["LastAccessedDate"] as? Date
+                    ?? (try? store.resourceValues(forKeys: [.contentModificationDateKey])
+                        .contentModificationDate)
+                    ?? .distantPast
+                candidates.append((store.path, accessed))
+            }
+        }
+        return candidates.max(by: { $0.accessed < $1.accessed })?.store
+    }
+
+    private static func plist(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? PropertyListSerialization.propertyList(
+            from: data, options: [], format: nil)) as? [String: Any]
+    }
+
+    /// Path containment on component boundaries — a plain `hasPrefix`
+    /// would let `/projects/nighthawk-iOS-old` match `/projects/nighthawk-iOS`.
+    private static func isContained(_ path: String, in root: String) -> Bool {
+        path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
     }
 
     private static func convert(_ occurrence: SymbolOccurrence) -> Occurrence {
