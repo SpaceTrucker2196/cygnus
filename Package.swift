@@ -22,7 +22,10 @@ let package = Package(
             .product(name: "CygnusQuery", package: "CygnusCore"),
             .product(name: "CygnusObservation", package: "CygnusCore"),
             .product(name: "CygnusProviders", package: "CygnusCore"),
-        ]),
+        ],
+        // The in-app help reference ships as markdown, not string
+        // literals — prose stays reviewable in a diff.
+        resources: [.copy("Resources/Help")]),
         .testTarget(name: "CygnusKitTests", dependencies: ["CygnusKit"]),
     ]
 )

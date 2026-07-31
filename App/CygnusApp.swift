@@ -30,9 +30,28 @@ struct CygnusApp: App {
         // window: always present, never restore.
         .defaultLaunchBehavior(.presented)
         .restorationBehavior(.disabled)
-        .commands { textSizeCommands }
+        .commands {
+            textSizeCommands
+            helpCommands
+        }
         Settings {
             SettingsView().dynamicTypeSize(textSize)
+        }
+        // The reference lives in its own window so it can sit beside
+        // the app while you follow it.
+        Window("Cygnus Help", id: Self.helpWindowID) {
+            HelpView().dynamicTypeSize(textSize)
+        }
+        .defaultSize(width: 900, height: 620)
+    }
+
+    static let helpWindowID = "cygnus-help"
+
+    /// Replaces the default Help item, which points at documentation
+    /// that does not exist for this app.
+    private var helpCommands: some Commands {
+        CommandGroup(replacing: .help) {
+            HelpMenuButton()
         }
     }
 
@@ -49,6 +68,16 @@ struct CygnusApp: App {
                 .keyboardShortcut("-", modifiers: .command)
             Button("Reset Text Size") { textSizeIndex = Self.defaultTextSize }
                 .keyboardShortcut("0", modifiers: .command)
+        }
+    }
+
+    /// A view, not a bare Button: `openWindow` is an environment
+    /// value, and `App` itself has no environment to read it from.
+    private struct HelpMenuButton: View {
+        @Environment(\.openWindow) private var openWindow
+        var body: some View {
+            Button("Cygnus Help") { openWindow(id: CygnusApp.helpWindowID) }
+                .keyboardShortcut("?", modifiers: .command)
         }
     }
 
