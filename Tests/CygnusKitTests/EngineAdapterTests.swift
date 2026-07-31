@@ -58,4 +58,46 @@ import Foundation
         let launch = result.nodes.first { $0.label == "launch()" }
         #expect(launch != nil)
     }
+
+    /// History through the real store, not the fixture: revisions are
+    /// listed, a second analysis produces a delta naming the new file,
+    /// and an as-of projection still shows the graph before it.
+    @Test func realEngineReportsRevisionHistoryAndDeltas() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-history-\(UUID().uuidString)")
+        let sources = root.appendingPathComponent("Sources")
+        try FileManager.default.createDirectory(at: sources, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try "struct First {}\n".write(to: sources.appendingPathComponent("First.swift"),
+                                      atomically: true, encoding: .utf8)
+
+        let engine = WorkspaceGraphEngine(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-history-ws-\(UUID().uuidString)"))
+        func analyze() async throws {
+            for try await _ in engine.analyze(repoAt: root) {}
+        }
+        try await analyze()
+        let afterFirst = try await engine.revisions(repoAt: root)
+        #expect(!afterFirst.isEmpty, "an analysis must commit at least one revision")
+        let baseline = try #require(afterFirst.last).id
+
+        // A second file, a second analysis, a real interval to diff.
+        try "struct Second {}\n".write(to: sources.appendingPathComponent("Second.swift"),
+                                       atomically: true, encoding: .utf8)
+        try await analyze()
+        let afterSecond = try await engine.revisions(repoAt: root)
+        #expect(afterSecond.count > afterFirst.count)
+        let latest = try #require(afterSecond.last).id
+
+        let delta = try await engine.delta(repoAt: root, from: baseline, to: latest)
+        #expect(!delta.isEmpty)
+        #expect(delta.addedNodes.contains { $0.contains("Second.swift") },
+                "the new file should appear as added: \(delta.addedNodes)")
+        #expect(delta.removedNodes.isEmpty, "nothing was deleted")
+
+        // The graph as it stood before the second file still lacks it.
+        let old = try await engine.snapshot(repoAt: root, asOf: baseline)
+        #expect(old.nodes.contains { $0.label == "First.swift" })
+        #expect(!old.nodes.contains { $0.label == "Second.swift" })
+    }
 }

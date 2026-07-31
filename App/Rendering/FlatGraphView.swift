@@ -40,6 +40,7 @@ struct FlatGraphView: View {
     /// trace from the current selection.
     @State private var traceTarget: String?
     @State private var showDisagreements = false
+    @State private var historyShown = false
 
     private struct LayoutInput: Equatable {
         let scene: GraphScene
@@ -127,8 +128,14 @@ struct FlatGraphView: View {
                             coverageMode: $coverageMode, cyclesOnly: $cyclesOnly,
                             expandFunctions: $expandFunctions, focusDepth: $focusDepth,
                             showDisagreements: $showDisagreements,
+                            historyShown: $historyShown,
                             cycleCount: cyclicEdges.count,
                             disagreementCount: disagreements.count)
+        }
+        .overlay(alignment: .topTrailing) {
+            if historyShown, let repo = store.selectedRepo {
+                GraphHistoryView(repoID: repo)
+            }
         }
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 6) {
@@ -509,6 +516,19 @@ struct FlatGraphView: View {
             if isSelected {
                 context.stroke(Path(ellipseIn: rect.insetBy(dx: -3, dy: -3)),
                                with: .color(.accentColor), lineWidth: 2)
+            }
+            // What this revision interval did to the node. Drawn as a
+            // filled pip rather than another ring: rings are already
+            // spoken for by coverage, selection and naming, and a
+            // fourth would be unreadable.
+            if !dimmed, let delta = store.activeDelta {
+                let mark: Color? = if delta.addedNodes.contains(node.id) { .green }
+                    else if delta.changedNodes.contains(node.id) { .orange }
+                    else { nil }
+                if let mark {
+                    let pip = CGRect(x: rect.maxX - 2, y: rect.minY - 4, width: 6, height: 6)
+                    context.fill(Path(ellipseIn: pip), with: .color(mark))
+                }
             }
             // Name-versus-structure conflict: a dashed ring, distinct
             // from coverage arcs and the selection ring.

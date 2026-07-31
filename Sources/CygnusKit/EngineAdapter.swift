@@ -96,25 +96,104 @@ public struct WorkspaceGraphEngine: GraphEngine {
         }
     }
 
+    // MARK: - History
+
+    public func revisions(repoAt url: URL) async throws -> [GraphRevision] {
+        let workspace = try await WorkspaceCache.shared.workspace(directory: workspaceDirectory)
+        return try await workspace.withStore { store in
+            try store.revisions().map {
+                GraphRevision(id: $0.id.raw, createdAt: $0.createdAt, note: $0.note)
+            }
+        }
+    }
+
+    public func delta(repoAt url: URL, from: Int64, to: Int64) async throws -> RevisionDelta {
+        let workspace = try await WorkspaceCache.shared.workspace(directory: workspaceDirectory)
+        guard let repoID = try await Self.repositoryID(in: workspace, at: url) else {
+            return RevisionDelta()
+        }
+        return try await workspace.withStore { store in
+            let delta = try store.diff(from: RevisionID(from), to: RevisionID(to))
+            func keys(_ versions: [ResolvedEntity]) -> Set<String> {
+                Set(versions.filter { $0.entity.repository == repoID }
+                    .map(\.entity.stableKey.raw))
+            }
+            let asserted = keys(delta.assertedEntityVersions)
+            let retracted = keys(delta.retractedEntityVersions)
+            // Asserted and retracted in the same window means the
+            // entity survived with new content, not that it came and
+            // went.
+            let owned = try Self.ownedEntityIDs(store: store, repository: repoID)
+            func countEdges(_ edges: [Relationship]) -> Int {
+                edges.filter { owned.contains($0.source) }.count
+            }
+            return RevisionDelta(
+                addedNodes: asserted.subtracting(retracted),
+                removedNodes: retracted.subtracting(asserted),
+                changedNodes: asserted.intersection(retracted),
+                addedEdges: countEdges(delta.assertedRelationships),
+                removedEdges: countEdges(delta.retractedRelationships))
+        }
+    }
+
+    public func snapshot(repoAt url: URL, asOf revision: Int64) async throws -> GraphSnapshot {
+        let workspace = try await WorkspaceCache.shared.workspace(directory: workspaceDirectory)
+        guard let repoID = try await Self.repositoryID(in: workspace, at: url) else {
+            return GraphSnapshot(nodes: [], edges: [])
+        }
+        return try await workspace.withStore { store in
+            try Self.snapshot(from: store, repository: repoID,
+                              at: .asOf(RevisionID(revision)))
+        }
+    }
+
+    /// The registered repository whose root is this URL. Matched
+    /// rather than re-registered: registering has side effects, and a
+    /// read must not mutate the workspace.
+    private static func repositoryID(in workspace: CygnusWorkspace,
+                                     at url: URL) async throws -> RepositoryID? {
+        let wanted = url.standardizedFileURL.path
+        return try await workspace.repositories()
+            .first { $0.rootPath.map { URL(fileURLWithPath: $0).standardizedFileURL.path } == wanted }?
+            .id
+    }
+
+    /// Entity ids belonging to a repository — the filter that keeps
+    /// one repo's counts out of another's.
+    private static func ownedEntityIDs(store: SQLiteGraphStore,
+                                       repository: RepositoryID) throws -> Set<EntityID> {
+        var ids = Set<EntityID>()
+        for kind in Self.projectedKinds {
+            for edge in try store.relationships(kind: kind, at: .current) {
+                ids.insert(edge.source)
+            }
+        }
+        let entities = try store.entities(ids: Array(ids), at: .current)
+        return Set(entities.filter { $0.entity.repository == repository }.map(\.entity.id))
+    }
+
+    static let projectedKinds: [RelationshipKind] = [
+        .containsPhysical, .declares, .imports, .references, .refersToSymbol,
+    ]
+
     /// Project one repository's current graph into a render-ready
     /// snapshot: containment + declaration + import edges owned by
     /// the repo, plus the shared module entities they point at. The
     /// workspace stores many repos; a snapshot never mixes them.
     static func snapshot(from store: SQLiteGraphStore,
-                         repository: RepositoryID) throws -> GraphSnapshot {
-        let kinds: [RelationshipKind] = [.containsPhysical, .declares, .imports,
-                                         .references, .refersToSymbol]
+                         repository: RepositoryID,
+                         at query: RevisionQuery = .current) throws -> GraphSnapshot {
         var entityIDs = Set<EntityID>()
         var rawEdges: [Relationship] = []
-        for kind in kinds {
-            for edge in try store.relationships(kind: kind, at: .current) {
+        for kind in Self.projectedKinds {
+            for edge in try store.relationships(kind: kind, at: query) {
                 rawEdges.append(edge)
                 entityIDs.insert(edge.source)
                 entityIDs.insert(edge.target)
             }
         }
 
-        let entities = try store.entities(ids: Array(entityIDs), at: .current)
+        let entities = try store.entities(ids: Array(entityIDs), at: query)
         let ownedIDs = Set(entities.filter { $0.entity.repository == repository }
             .map(\.entity.id))
         let keptEdges = rawEdges.filter { ownedIDs.contains($0.source) }

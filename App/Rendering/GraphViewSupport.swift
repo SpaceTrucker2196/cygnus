@@ -150,6 +150,7 @@ struct GraphControlBar: View {
     /// Hops of blast radius a selection lights up; nil = unbounded.
     @Binding var focusDepth: Int?
     @Binding var showDisagreements: Bool
+    @Binding var historyShown: Bool
     var cycleCount: Int = 0
     var disagreementCount: Int = 0
 
@@ -230,6 +231,12 @@ struct GraphControlBar: View {
             .accessibilityLabel("Naming conflicts")
             .accessibilityValue(disagreementCount == 0 ? "none"
                                 : "\(disagreementCount) nodes")
+            Toggle(isOn: $historyShown) {
+                Label("History", systemImage: "clock.arrow.circlepath")
+            }
+            .toggleStyle(.checkbox)
+            .help("Compare two revisions and trend a metric across them")
+            .accessibilityLabel("History panel")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Graph controls")

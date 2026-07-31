@@ -81,6 +81,7 @@ stays memorable instead of reshuffling every run.
 - **Depth** — how many hops a selection lights up: 1, 2, 3, or All.
 - **Naming** — ring nodes whose name claims a role their structure
   contradicts.
+- **History** — compare two revisions and trend a metric across them.
 
 ## Depth, and why it defaults to 1
 
@@ -106,6 +107,27 @@ Longer detours are left out.
 
 "No route" is a real answer, not a failure. Two things you assumed
 were connected turning out not to be is usually worth knowing.
+
+## History
+
+Every analysis commits a revision, and nothing is ever overwritten, so
+the graph can be asked what it looked like at any past point.
+
+**History** opens two things. **Compare revisions** picks an interval
+and marks what it did: a green pip for a node that arrived, orange for
+one whose content changed, and counts for what was removed and for
+edges either way. The **trend** chart tracks one metric — nodes,
+edges, cyclic edges, or unconnected nodes — across the recent
+revisions.
+
+The trend is the point. A single reading cannot tell you whether a
+cleanup is working; a line across ten revisions can. Cycles and
+unconnected nodes are the two worth watching, because both should be
+falling if the work is going well.
+
+Trends read the last twenty revisions, and each point is a full
+projection of the graph as it stood, so a long history takes a moment
+to draw.
 
 ## Naming conflicts
 

@@ -62,6 +62,27 @@ public final class WorkspaceStore {
     @ObservationIgnored var buildRunners: [UUID: BuildStreamRunner] = [:]
     @ObservationIgnored var buildTrackers: [UUID: CIFlowBuildTracker] = [:]
 
+    // MARK: History state
+    /// Revision history per repo, loaded on demand. Workspace-wide
+    /// revisions; deltas below are filtered to the repo.
+    public internal(set) var history: [UUID: [GraphRevision]] = [:]
+    /// The revision interval currently drawn on the graph. One slot —
+    /// comparing two revisions at a time is the whole interaction.
+    public internal(set) var deltaRange: RevisionRange?
+    public internal(set) var activeDelta: RevisionDelta?
+    public internal(set) var trendPoints: [TrendPoint] = []
+    public var trendMetric: GraphMetric = .cycles
+    @ObservationIgnored var historyTask: Task<Void, Never>?
+
+    public struct RevisionRange: Sendable, Equatable {
+        public let from: Int64
+        public let to: Int64
+        public init(from: Int64, to: Int64) {
+            self.from = from
+            self.to = to
+        }
+    }
+
     /// Hard 5 GB memory ceiling. Views read it for the usage meter;
     /// analysis honours it.
     public let memory: MemoryGovernor
@@ -184,7 +205,9 @@ public final class WorkspaceStore {
         }
     }
 
-    private let engine: any GraphEngine
+    /// internal, not private: the history and build extensions live in
+    /// their own files and drive the same engine.
+    let engine: any GraphEngine
     private let persistence: WorkspacePersistence
     let factory: any FactoryProvider
     let docs: any FactoryDocsProvider
