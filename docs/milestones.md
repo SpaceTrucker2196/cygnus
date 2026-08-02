@@ -83,7 +83,10 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       files with authorship, 32 shared with no dominant owner.
       Remaining candidates: departed-author staleness (needs dates in
       the snapshot), and CI Flow as a graph projection so the second
-      Make parser can go.
+      Make parser can go. **Refused:** forgotten/dead-code detection —
+      measured a majority of false positives on cygnus itself because
+      index coverage does not span the app and package targets;
+      reasoning and the numbers in `docs/wiki/visualization-ideas.md`.
 
 ## Research
 

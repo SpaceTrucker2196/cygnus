@@ -127,14 +127,48 @@ coverage, orphan count — across revisions. That is what makes a
 modernization effort legible while it is happening, and it is mostly
 plumbing we already own.
 
-## 8. Forgotten and lost code
+## 8. Forgotten and lost code — **tried, and refused**
 
-The book devotes a section to "Forgotten and Lost Systems" (p. 111).
-Unreachable subgraphs — nodes with no path from any entry point — are
-computable from what we have and are the graph equivalent.
+The book devotes a section to "Forgotten and Lost Systems" (p. 111),
+and the plan here was: files nothing depends on, paired with
+ownership, so unreferenced *and* unowned surfaces the strongest
+deletion candidate a codebase can offer.
 
-Pair it with the ownership overlay from idea 3: unreachable *and*
-unowned is the strongest deletion candidate a codebase can offer.
+**It is not honestly implementable on the evidence we have.** Measured
+on cygnus itself, 2026-08-01:
+
+- 207 files. **Zero** are the target of a `core:imports` edge —
+  imports point at modules, never files, so in Swift "nothing imports
+  this file" is true of every file and means nothing.
+- With compiler-resolved references, only 65 files are referenced by
+  anything.
+- Refining to "the index demonstrably covered this file" (it has
+  *outgoing* references) still leaves **41 candidates**, and the list
+  is mostly wrong: `WorkspaceStore+History.swift`, written and wired
+  into `GraphHistoryView` the same day, is on it.
+
+The cause is partial index coverage across targets. The app target is
+built by Xcode, the packages by SwiftPM, and the index store the
+engine reads does not span both — so a file used only from the app
+looks unreferenced. That is a property of how a repository is built,
+which the graph cannot detect and must not silently interpret.
+
+A lens that confidently flags live code as dead is worse than no lens:
+it teaches people to distrust the tool, including the views that *are*
+right. Test files could be excluded easily enough, but the extension
+files and CLI sources could not be.
+
+**What would make it possible**, in rough order of cost: index
+coverage that spans every target in a repository; or reachability at
+module rather than file granularity; or treating "no evidence either
+way" as a distinct third state and only ever reporting the files the
+index genuinely covered, with the coverage ratio shown next to the
+answer. The third is the cheapest and the most honest, and it is
+probably where this restarts.
+
+Related and *not* refused: the **Unowned** state in Owner grouping
+(idea 3) already surfaces code nobody has touched, which answers part
+of the same question from evidence that is actually complete.
 
 ## Related research
 
