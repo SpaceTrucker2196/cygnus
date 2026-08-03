@@ -1,40 +1,67 @@
 import Foundation
 
 // Makefile rule parsing, reduced to what the graph needs: which
-// targets exist and what each is declared to depend on. Pure text in,
-// facts out — no execution, no variable expansion beyond simple
-// assignments, no filesystem.
-//
-// This is deliberately *less* than the app-side flow parser
-// (Sources/CygnusKit/MakeFlow.swift), which also needs recipe command
-// words and ordering to draw a flowchart. See docs/wiki/renderers.md.
+// targets exist, what each is declared to depend on, and what each
+// runs. Pure text in, facts out — no execution, no variable expansion
+// beyond simple assignments, no filesystem.
 
 public struct MakeRule: Sendable, Equatable {
     public let target: String
     /// Prerequisites verbatim, in declaration order.
     public let prerequisites: [String]
+    /// Recipe command lines in execution order, with make's line
+    /// prefixes (`@`, `-`, `+`) stripped. Order is the fact here: a
+    /// recipe is a sequence, and a set of commands would not say what
+    /// the target does.
+    public let recipe: [String]
     public let isPhony: Bool
 
-    public init(target: String, prerequisites: [String], isPhony: Bool) {
+    public init(target: String, prerequisites: [String],
+                recipe: [String] = [], isPhony: Bool) {
         self.target = target
         self.prerequisites = prerequisites
+        self.recipe = recipe
         self.isPhony = isPhony
     }
 }
 
 public enum MakefileRules {
-    /// Parse `target: prereqs` rules. Recipe lines are skipped —
-    /// prerequisites are where Make states its file dependencies, and
-    /// they are what the graph wants.
+    /// Recipe lines kept per target. A generated Makefile can attach
+    /// hundreds to one rule, and past the first handful they describe
+    /// the same step in more detail rather than a different one.
+    static let maxRecipeLines = 12
+
+    /// Parse `target: prereqs` rules and their recipes.
+    /// Prerequisites are where Make states its file dependencies;
+    /// the recipe is what the target actually does, in order.
     public static func parse(_ text: String) -> [MakeRule] {
         let joined = joinContinuations(text)
         let variables = assignments(in: joined)
         var phony: Set<String> = []
         var rules: [MakeRule] = []
+        // Indices of the rules the most recent rule line produced. A
+        // line naming several targets gives each of them the same
+        // recipe, which is what make does.
+        var currentRules: [Int] = []
 
         for raw in joined.components(separatedBy: "\n") {
             // A real tab starts a recipe line; Make requires it.
-            if raw.first == "\t" { continue }
+            if raw.first == "\t" {
+                guard !currentRules.isEmpty else { continue }
+                let command = raw.drop { $0 == "\t" || $0 == " " }
+                    // @ suppresses echo, - ignores errors, + forces
+                    // execution under -n. None change what runs.
+                    .drop { "@-+".contains($0) }
+                    .trimmingCharacters(in: .whitespaces)
+                guard !command.isEmpty, !command.hasPrefix("#") else { continue }
+                for index in currentRules where rules[index].recipe.count < maxRecipeLines {
+                    rules[index] = MakeRule(target: rules[index].target,
+                                            prerequisites: rules[index].prerequisites,
+                                            recipe: rules[index].recipe + [command],
+                                            isPhony: rules[index].isPhony)
+                }
+                continue
+            }
             let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
             if line.hasPrefix(".PHONY") {
@@ -43,6 +70,7 @@ public enum MakefileRules {
                     .split(separator: " ").map(String.init))
                 continue
             }
+            currentRules = []
             guard let colon = ruleColon(line) else { continue }
             let lhs = String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
             let rhs = String(line[line.index(after: colon)...])
@@ -66,6 +94,7 @@ public enum MakefileRules {
                 // an entity.
                 guard !expanded.isEmpty, !expanded.contains("%"), expanded != ".PHONY"
                 else { continue }
+                currentRules.append(rules.count)
                 rules.append(MakeRule(target: expanded, prerequisites: prerequisites,
                                       isPhony: phony.contains(expanded)))
             }
@@ -77,18 +106,24 @@ public enum MakefileRules {
 
     private static func merge(_ rules: [MakeRule], phony: Set<String>) -> [MakeRule] {
         var order: [String] = []
-        var byTarget: [String: [String]] = [:]
+        var prerequisites: [String: [String]] = [:]
+        var recipes: [String: [String]] = [:]
         for rule in rules {
-            if byTarget[rule.target] == nil { order.append(rule.target) }
-            var existing = byTarget[rule.target] ?? []
+            if prerequisites[rule.target] == nil { order.append(rule.target) }
+            var existing = prerequisites[rule.target] ?? []
             for prerequisite in rule.prerequisites where !existing.contains(prerequisite) {
                 existing.append(prerequisite)
             }
-            byTarget[rule.target] = existing
+            prerequisites[rule.target] = existing
+            // Make allows only one recipe per target; a second is a
+            // warning and the last one wins. Keep whichever is
+            // non-empty rather than concatenating two alternatives
+            // into a sequence that never runs.
+            if !rule.recipe.isEmpty { recipes[rule.target] = rule.recipe }
         }
         return order.map {
-            MakeRule(target: $0, prerequisites: byTarget[$0] ?? [],
-                     isPhony: phony.contains($0))
+            MakeRule(target: $0, prerequisites: prerequisites[$0] ?? [],
+                     recipe: recipes[$0] ?? [], isPhony: phony.contains($0))
         }
     }
 

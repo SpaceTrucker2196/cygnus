@@ -22,6 +22,8 @@ public enum ObservationPayload {
     public static let buildDependency = "core:buildDependency"
     /// Which build system stated it: "make", "fastlane".
     public static let buildSystem = "core:buildSystem"
+    /// The target's commands in execution order.
+    public static let buildSteps = "core:buildSteps"
     /// Author display name, and the address that identifies them.
     public static let authorName = "core:authorName"
     public static let authorEmail = "core:authorEmail"

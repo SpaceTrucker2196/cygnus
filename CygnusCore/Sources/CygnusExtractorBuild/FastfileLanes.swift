@@ -9,15 +9,32 @@ public struct FastlaneLane: Sendable, Equatable {
     public let isPrivate: Bool
     /// Other lanes this one invokes, in call order.
     public let calls: [String]
+    /// Every action the lane runs, in order — sub-lane calls included,
+    /// since from the lane's point of view they are just steps.
+    public let steps: [String]
 
-    public init(name: String, isPrivate: Bool, calls: [String]) {
+    public init(name: String, isPrivate: Bool, calls: [String], steps: [String] = []) {
         self.name = name
         self.isPrivate = isPrivate
         self.calls = calls
+        self.steps = steps
     }
 }
 
 public enum FastfileLanes {
+    /// Steps kept per lane. Past a dozen a lane is described, not
+    /// summarized.
+    static let maxSteps = 14
+
+    /// Ruby control flow and fastlane bookkeeping — present in a lane
+    /// body, but not things the lane does.
+    static let notActions: Set<String> = [
+        "if", "unless", "case", "when", "else", "elsif", "begin", "rescue",
+        "ensure", "end", "do", "while", "until", "for", "return", "next",
+        "break", "yield", "then", "in", "lane", "private_lane", "platform",
+        "desc", "puts", "require", "import", "self", "true", "false", "nil",
+    ]
+
     /// Parse `lane :name do … end` blocks, matching the `end` at the
     /// lane's own indentation. Only calls to *other lanes in this
     /// file* are recorded: a bare fastlane action is a step, not a
@@ -54,14 +71,23 @@ public enum FastfileLanes {
         let known = Set(blocks.map(\.name))
         return blocks.map { block in
             var calls: [String] = []
+            var steps: [String] = []
             for line in block.body {
-                for candidate in invocations(in: line)
+                let candidates = invocations(in: line)
+                for candidate in candidates
                 where known.contains(candidate) && candidate != block.name
                     && !calls.contains(candidate) {
                     calls.append(candidate)
                 }
+                // The leading token is what the line invokes; symbol
+                // arguments are parameters, not steps.
+                if let step = candidates.first, step != block.name,
+                   steps.count < maxSteps, !Self.notActions.contains(step) {
+                    steps.append(step)
+                }
             }
-            return FastlaneLane(name: block.name, isPrivate: block.isPrivate, calls: calls)
+            return FastlaneLane(name: block.name, isPrivate: block.isPrivate,
+                                calls: calls, steps: steps)
         }
     }
 

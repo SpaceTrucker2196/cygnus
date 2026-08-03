@@ -188,9 +188,21 @@ public enum Resolver {
                     else { continue }
                     let targetKey = StableKeys.buildTarget(
                         repository, path: fileObs.file.path, name: target)
+                    // The recipe is a property, not a child entity per
+                    // command: a step has no identity of its own, and
+                    // minting thousands of them would bloat the graph
+                    // to say something an ordered list already says.
+                    var properties: PropertyBag = [:]
+                    if let steps = obs.payload[ObservationPayload.buildSteps] {
+                        properties[ObservationPayload.buildSteps] = steps
+                    }
+                    if case .string(let system)? = obs.payload[ObservationPayload.buildSystem] {
+                        properties[ObservationPayload.buildSystem] = .string(system)
+                    }
                     assert(EntityAssertion(
                         stableKey: targetKey, kind: .buildTarget, repository: repository,
-                        name: target, anchors: [obs.file], supportedBy: [obsID]))
+                        name: target, properties: properties,
+                        anchors: [obs.file], supportedBy: [obsID]))
                     // The build file declares its targets, the same
                     // relation a source file has to its declarations.
                     changes.relationships.append(RelationshipAssertion(

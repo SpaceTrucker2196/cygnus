@@ -123,6 +123,46 @@ import CygnusProviders
         #expect(dependencies(observed, of: "app") == ["a.c", "b.c"])
     }
 
+    private func steps(_ observations: [Observation], of target: String) -> [String] {
+        for observation in observations {
+            guard case .string(let name)? = observation.payload[ObservationPayload.buildTarget],
+                  name == target,
+                  case .array(let values)? = observation.payload[ObservationPayload.buildSteps]
+            else { continue }
+            return values.compactMap { if case .string(let s) = $0 { s } else { nil } }
+        }
+        return []
+    }
+
+    /// A recipe is a sequence, so order is the fact. Prefixes that
+    /// change echoing or error handling are stripped; what runs is
+    /// what is recorded.
+    @Test func readsRecipesInOrder() throws {
+        let observed = try observations("""
+            build:
+            \t@echo building
+            \t-rm -f stale.o
+            \tclang -o app main.c
+            """, path: "Makefile")
+        #expect(steps(observed, of: "build")
+                == ["echo building", "rm -f stale.o", "clang -o app main.c"])
+    }
+
+    /// Make gives every target on a rule line the same recipe.
+    @Test func aMultiTargetRuleSharesItsRecipe() throws {
+        let observed = try observations("""
+            debug release: main.c
+            \tclang -o $@ main.c
+            """, path: "Makefile")
+        #expect(steps(observed, of: "debug") == ["clang -o $@ main.c"])
+        #expect(steps(observed, of: "release") == ["clang -o $@ main.c"])
+    }
+
+    @Test func aTargetWithNoRecipeReportsNone() throws {
+        let observed = try observations("all: build\n", path: "Makefile")
+        #expect(steps(observed, of: "all").isEmpty)
+    }
+
     // MARK: - fastlane
 
     @Test func readsLanesAndSubLaneCalls() throws {
@@ -151,6 +191,27 @@ import CygnusProviders
         #expect(dependencies(observed, of: "release") == ["beta"])
         // A fastlane action is a step, not a coupling between lanes.
         #expect(!dependencies(observed, of: "beta").contains("build_app"))
+    }
+
+    /// A lane's steps are what it runs, in order — sub-lane calls
+    /// included, since from the lane's side they are just steps. Ruby
+    /// control flow is not.
+    @Test func readsLaneStepsInOrder() throws {
+        let observed = try observations("""
+            lane :beta do
+              setup
+              build_app(scheme: "App")
+              if ENV["CI"]
+                upload_to_testflight
+              end
+            end
+
+            lane :setup do
+              cocoapods
+            end
+            """, path: "fastlane/Fastfile")
+        #expect(steps(observed, of: "beta")
+                == ["setup", "build_app", "upload_to_testflight"])
     }
 
     @Test func laneCallsBySymbolAreFound() {

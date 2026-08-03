@@ -61,6 +61,13 @@ Two deliberate limits:
   recursively-defined variable stays verbatim rather than becoming a
   wrong answer.
 
+Targets also carry their **recipe** — the commands they run, in
+order, as a `core:buildSteps` property rather than one entity per
+command. A step has no identity of its own, and minting thousands of
+them would bloat the graph to say what an ordered list already says.
+Order is the fact: a recipe is a sequence, and a set of commands would
+not tell you what the target does.
+
 ### The duplicated parser, on purpose
 
 `CygnusExtractorBuild.MakefileRules` and the app-side
@@ -75,10 +82,15 @@ and does not belong in the engine.
 
 The end state is better than either: once build facts are in the
 graph, the CI Flow chart should be a **projection of the graph** like
-every other view, and the second parser disappears. That needs recipe
-ordering in the graph, which is not there yet. Until then, one parser
-serves the graph and one serves the chart, and this note is the
-record of why.
+every other view, and the second parser disappears.
+
+**The blocker is gone as of 2026-08-03** — recipes and their order are
+now in the graph, along with which build system stated them. What
+remains is the swap itself: build `CIFlow` from a snapshot instead of
+from a fresh parse, which changes the data source of a shipped,
+animated feature. Do it with differential testing — construct the flow
+both ways on cygnus, sloth and Corn3000 and assert they match before
+deleting anything — and do it where the animation can be watched.
 
 ## Adding a language
 

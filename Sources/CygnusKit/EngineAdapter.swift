@@ -161,7 +161,13 @@ public struct WorkspaceGraphEngine: GraphEngine {
     /// Entity properties a renderer is allowed to see. An allow-list,
     /// not a copy of the bag: the snapshot is a projection, and
     /// widening it silently is how it stops being one.
-    static let projectedProperties = ["core:lastCommit"]
+    static let projectedProperties = ["core:lastCommit", "core:buildSystem"]
+    /// Ordered lists, joined with a unit separator. The snapshot's
+    /// attribute bag is strings, and a renderer that needs the order
+    /// splits it back — cheaper than widening the value type for the
+    /// one case that needs it.
+    static let projectedListProperties = ["core:buildSteps"]
+    static let listSeparator = "\u{1f}"
 
     static func projectedAttributes(of resolved: ResolvedEntity) -> [String: String] {
         var result: [String: String] = [:]
@@ -169,6 +175,13 @@ public struct WorkspaceGraphEngine: GraphEngine {
             if case .string(let value)? = resolved.version.properties[key] {
                 result[key] = value
             }
+        }
+        for key in projectedListProperties {
+            guard case .array(let values)? = resolved.version.properties[key] else { continue }
+            let strings = values.compactMap { value -> String? in
+                if case .string(let text) = value { text } else { nil }
+            }
+            if !strings.isEmpty { result[key] = strings.joined(separator: listSeparator) }
         }
         return result
     }

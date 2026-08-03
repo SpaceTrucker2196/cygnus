@@ -98,6 +98,40 @@ import CygnusObservation
         #expect(!pairs.contains { $0.hasSuffix("→build_app") })
     }
 
+    /// The recipe reaches the graph in order, as a property rather
+    /// than a child entity per command. This is what a flowchart
+    /// needs to be a projection of the graph instead of a second
+    /// parse of the same file.
+    @Test func recipesReachTheGraphInOrder() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+        let store = await workspace.store
+
+        let app = try #require(try store.entity(
+            stableKey: StableKeys.buildTarget(repo, path: "Makefile", name: "app"),
+            at: .current))
+        guard case .array(let steps)? = app.version.properties["core:buildSteps"] else {
+            Issue.record("no recipe on the target")
+            return
+        }
+        #expect(steps.count == 1)
+        if case .string(let command) = steps[0] {
+            #expect(command == "clang -o app src/main.c")
+        }
+        // Which build system said so travels with it, so a renderer
+        // can word itself for lanes or targets without re-reading the
+        // file to find out.
+        #expect(app.version.properties["core:buildSystem"] == .string("make"))
+
+        let beta = try #require(try store.entity(
+            stableKey: StableKeys.buildTarget(repo, path: "fastlane/Fastfile", name: "beta"),
+            at: .current))
+        #expect(beta.version.properties["core:buildSystem"] == .string("fastlane"))
+    }
+
     /// Build facts carry provenance like every other derived or
     /// observed fact, so they die with the file that stated them.
     @Test func buildFactsVanishWhenTheBuildFileDoes() async throws {

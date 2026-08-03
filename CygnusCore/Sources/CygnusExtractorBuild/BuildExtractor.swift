@@ -47,14 +47,14 @@ public struct BuildExtractor: ObservationExtractor {
     private func makeObservations(_ text: String, file: SnapshotFile) -> [Observation] {
         MakefileRules.parse(text).flatMap { rule in
             observations(target: rule.target, dependencies: rule.prerequisites,
-                         system: "make", file: file)
+                         steps: rule.recipe, system: "make", file: file)
         }
     }
 
     private func fastlaneObservations(_ text: String, file: SnapshotFile) -> [Observation] {
         FastfileLanes.parse(text).flatMap { lane in
             observations(target: lane.name, dependencies: lane.calls,
-                         system: "fastlane", file: file)
+                         steps: lane.steps, system: "fastlane", file: file)
         }
     }
 
@@ -63,11 +63,19 @@ public struct BuildExtractor: ObservationExtractor {
     /// still a fact, and so provenance points at the exact statement
     /// that supports each edge.
     private func observations(target: String, dependencies: [String],
-                              system: String, file: SnapshotFile) -> [Observation] {
+                              steps: [String] = [], system: String,
+                              file: SnapshotFile) -> [Observation] {
         var payload: [String: PropertyValue] = [
             ObservationPayload.buildTarget: .string(target),
             ObservationPayload.buildSystem: .string(system),
         ]
+        // Order carries the meaning, so the steps ride as an ordered
+        // array on the target's existence observation rather than as
+        // one observation each — a set of commands would not say what
+        // the target does.
+        if !steps.isEmpty {
+            payload[ObservationPayload.buildSteps] = .array(steps.map { .string($0) })
+        }
         var result = [Observation(kind: .buildRule, file: SourceAnchor(path: file.path, blob: file.blob, range: nil),
                                   payload: payload, extractor: identity)]
         for dependency in dependencies {
