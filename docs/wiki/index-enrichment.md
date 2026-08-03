@@ -68,6 +68,21 @@ it, so ghosts are filtered at the point of use rather than trusted.
 Enrichment also runs on a source no-op, because a build can happen
 between analyses. See [[analysis-pipeline]].
 
+It does **not** run when neither the store nor the snapshot has moved.
+That guard exists because the original rule — "re-run whenever the
+source did not change" — watched the wrong thing. Measured on
+2026-08-03, nighthawk-iOS spent 30 s of a 30.3 s analysis inside an
+Xcode index store, for 113 files, and paid it again on every
+re-analysis. What matters is whether the *store* was rebuilt, not
+whether the source changed, so the workspace keeps a small
+`enrichment-state.json` fingerprinting the store's unit and record
+directories. Re-analysis of an unchanged repo went from 30 s to 0.1 s;
+building the project still changes the fingerprint and still brings
+new symbols in.
+
+The fingerprint is written *before* the read, not after: a store that
+makes the reader hang must not be retried on every analysis forever.
+
 ## When it is only partial
 
 Worse than missing, because it is silent. An index store covers the

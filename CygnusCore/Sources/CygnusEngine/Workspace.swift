@@ -352,6 +352,25 @@ public actor CygnusWorkspace {
         currentPaths: Set<String>,
         progress: (@Sendable (IndexProgress) -> Void)?) async throws -> RevisionID? {
         guard let storePath = IndexStoreReader.storePath(under: root) else { return nil }
+
+        // Reading the store is the expensive half of an analysis on a
+        // repository with a large Xcode index. Skip it when the store
+        // has not been rebuilt and the snapshot has not moved —
+        // nothing it could tell us has changed.
+        let fingerprint = EnrichmentLedger.fingerprint(ofStoreAt: storePath)
+        var ledger = EnrichmentLedger.load(in: directory)
+        if let previous = ledger[repoID.raw],
+           previous.storeFingerprint == fingerprint,
+           previous.snapshotID == snapshot.raw {
+            return nil
+        }
+        // Recorded before the work, not after: a store that makes the
+        // reader crash or hang must not be retried on every analysis
+        // for the rest of time.
+        ledger[repoID.raw] = EnrichmentState(storeFingerprint: fingerprint,
+                                             snapshotID: snapshot.raw)
+        EnrichmentLedger.save(ledger, in: directory)
+
         progress?(IndexProgress(phase: "enrich", completed: 0, total: 1))
         let reader = try IndexStoreReader(
             storePath: storePath,
