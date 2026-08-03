@@ -145,6 +145,45 @@ import CygnusObservation
                 "an inferred fact with no evidence behind it should not exist")
     }
 
+    /// The drift canary, extended to cover the passes added since it
+    /// was written. Ownership retracts and reasserts its edges
+    /// wholesale on every run, and build facts come from a second
+    /// extractor — either could leave an incrementally-maintained
+    /// graph disagreeing with a full rebuild, which is precisely what
+    /// `verify` exists to catch and what no fixture covered, because
+    /// the existing fixtures have no git history.
+    @Test func incrementalGraphMatchesAFullRebuildWithOwnershipAndBuildFacts() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try """
+            all: Sources/Ada.swift
+            \tswift build
+            """.write(to: root.appendingPathComponent("Makefile"),
+                      atomically: true, encoding: .utf8)
+        try git(["add", "Makefile"], in: root)
+        try git(["-c", "user.name=Ada", "-c", "user.email=ada@example.com",
+                 "commit", "-q", "-m", "add makefile"], in: root)
+
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+
+        // An edit, committed, then an incremental re-index — the state
+        // a full rebuild has to agree with.
+        try "struct Ada { let v = 99 }\n".write(
+            to: root.appendingPathComponent("Sources/Ada.swift"),
+            atomically: true, encoding: .utf8)
+        try git(["add", "Sources/Ada.swift"], in: root)
+        try git(["-c", "user.name=Grace", "-c", "user.email=grace@example.com",
+                 "commit", "-q", "-m", "edit", "--author=Grace <grace@example.com>"],
+                in: root)
+        _ = try await workspace.index(repo)
+
+        let report = try await workspace.verify(repo)
+        #expect(report.isClean,
+                "stale: \(report.staleFacts.prefix(5)) missing: \(report.missingFacts.prefix(5))")
+    }
+
     /// A repository without git is not an error — it simply has no
     /// ownership facts.
     @Test func aRepoWithoutGitHasNoOwnership() async throws {
