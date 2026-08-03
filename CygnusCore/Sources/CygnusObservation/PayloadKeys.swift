@@ -24,6 +24,10 @@ public enum ObservationPayload {
     public static let buildSystem = "core:buildSystem"
     /// The target's commands in execution order.
     public static let buildSteps = "core:buildSteps"
+    /// Where the target sits in its build file. Make's default goal is
+    /// the *first* target, so declaration order is a fact about what
+    /// the build does, not a display preference.
+    public static let buildOrder = "core:buildOrder"
     /// Author display name, and the address that identifies them.
     public static let authorName = "core:authorName"
     public static let authorEmail = "core:authorEmail"

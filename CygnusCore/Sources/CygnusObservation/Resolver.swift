@@ -199,6 +199,9 @@ public enum Resolver {
                     if case .string(let system)? = obs.payload[ObservationPayload.buildSystem] {
                         properties[ObservationPayload.buildSystem] = .string(system)
                     }
+                    if case .int(let order)? = obs.payload[ObservationPayload.buildOrder] {
+                        properties[ObservationPayload.buildOrder] = .int(order)
+                    }
                     assert(EntityAssertion(
                         stableKey: targetKey, kind: .buildTarget, repository: repository,
                         name: target, properties: properties,

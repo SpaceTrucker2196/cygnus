@@ -54,10 +54,16 @@ public enum MakefileRules {
                     .drop { "@-+".contains($0) }
                     .trimmingCharacters(in: .whitespaces)
                 guard !command.isEmpty, !command.hasPrefix("#") else { continue }
+                // Expanded like prerequisites are, so `$(CC) -c foo.c`
+                // records the compiler make would actually run.
+                // Automatic variables ($@, $^) stay verbatim: make
+                // computes them per invocation and no reading of the
+                // file can know them.
+                let expanded = expand(command, with: variables)
                 for index in currentRules where rules[index].recipe.count < maxRecipeLines {
                     rules[index] = MakeRule(target: rules[index].target,
                                             prerequisites: rules[index].prerequisites,
-                                            recipe: rules[index].recipe + [command],
+                                            recipe: rules[index].recipe + [expanded],
                                             isPhony: rules[index].isPhony)
                 }
                 continue

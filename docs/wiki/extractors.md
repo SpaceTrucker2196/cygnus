@@ -84,13 +84,38 @@ The end state is better than either: once build facts are in the
 graph, the CI Flow chart should be a **projection of the graph** like
 every other view, and the second parser disappears.
 
-**The blocker is gone as of 2026-08-03** — recipes and their order are
-now in the graph, along with which build system stated them. What
-remains is the swap itself: build `CIFlow` from a snapshot instead of
-from a fresh parse, which changes the data source of a shipped,
-animated feature. Do it with differential testing — construct the flow
-both ways on cygnus, sloth and Corn3000 and assert they match before
-deleting anything — and do it where the animation can be watched.
+**The blocker is gone as of 2026-08-03.** Recipes and their order are
+in the graph, `CIFlow.from(snapshot:)` builds the chart from it, and
+`CIFlowProjectionTests` diffs the two constructions against real
+Makefiles. cygnus and otter project identically. Nothing is wired up
+yet — the swap is one line, and it is blocked on a decision rather
+than on work.
+
+### The decision the swap needs
+
+sloth's Makefile builds `$(TARGET)`, and the two sides disagree about
+what to call it:
+
+- The **graph** expands the variable and names the target `sloth`,
+  because an entity needs an identity a later revision can match, and
+  `$(TARGET)` is not one — it is a different string every time the
+  variable changes.
+- The **chart** keeps `$(TARGET)` verbatim, decided in 9342eea so that
+  variable and pattern targets stay visible and the picture stays
+  connected. It also draws `%.o`, which the graph deliberately has no
+  entity for: a pattern rule describes a shape, not a thing.
+
+Both are right for their own purpose and they cannot both be shown.
+Swapping the chart onto the graph therefore *changes what a user
+sees* — `sloth` instead of `$(TARGET)`, and no `%.o` row. Arguably an
+improvement, since it names what actually gets built, but it is a
+change to make on purpose rather than discover afterwards.
+
+Three ways out, in increasing cost: accept the new labels; record the
+verbatim name alongside the expanded one so the chart can choose; or
+leave the chart parsing files forever and accept the duplication. The
+test pins the current disagreement, so whichever is chosen, the
+choice is visible.
 
 ## Adding a language
 

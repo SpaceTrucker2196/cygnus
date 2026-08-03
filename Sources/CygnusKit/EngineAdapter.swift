@@ -162,6 +162,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
     /// not a copy of the bag: the snapshot is a projection, and
     /// widening it silently is how it stops being one.
     static let projectedProperties = ["core:lastCommit", "core:buildSystem"]
+    static let projectedIntProperties = ["core:buildOrder"]
     /// Ordered lists, joined with a unit separator. The snapshot's
     /// attribute bag is strings, and a renderer that needs the order
     /// splits it back — cheaper than widening the value type for the
@@ -174,6 +175,11 @@ public struct WorkspaceGraphEngine: GraphEngine {
         for key in projectedProperties {
             if case .string(let value)? = resolved.version.properties[key] {
                 result[key] = value
+            }
+        }
+        for key in projectedIntProperties {
+            if case .int(let value)? = resolved.version.properties[key] {
+                result[key] = String(value)
             }
         }
         for key in projectedListProperties {

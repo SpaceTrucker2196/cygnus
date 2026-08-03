@@ -45,16 +45,16 @@ public struct BuildExtractor: ObservationExtractor {
     }
 
     private func makeObservations(_ text: String, file: SnapshotFile) -> [Observation] {
-        MakefileRules.parse(text).flatMap { rule in
+        MakefileRules.parse(text).enumerated().flatMap { order, rule in
             observations(target: rule.target, dependencies: rule.prerequisites,
-                         steps: rule.recipe, system: "make", file: file)
+                         steps: rule.recipe, order: order, system: "make", file: file)
         }
     }
 
     private func fastlaneObservations(_ text: String, file: SnapshotFile) -> [Observation] {
-        FastfileLanes.parse(text).flatMap { lane in
+        FastfileLanes.parse(text).enumerated().flatMap { order, lane in
             observations(target: lane.name, dependencies: lane.calls,
-                         steps: lane.steps, system: "fastlane", file: file)
+                         steps: lane.steps, order: order, system: "fastlane", file: file)
         }
     }
 
@@ -63,11 +63,12 @@ public struct BuildExtractor: ObservationExtractor {
     /// still a fact, and so provenance points at the exact statement
     /// that supports each edge.
     private func observations(target: String, dependencies: [String],
-                              steps: [String] = [], system: String,
+                              steps: [String] = [], order: Int = 0, system: String,
                               file: SnapshotFile) -> [Observation] {
         var payload: [String: PropertyValue] = [
             ObservationPayload.buildTarget: .string(target),
             ObservationPayload.buildSystem: .string(system),
+            ObservationPayload.buildOrder: .int(Int64(order)),
         ]
         // Order carries the meaning, so the steps ride as an ordered
         // array on the target's existence observation rather than as
