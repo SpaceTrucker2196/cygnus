@@ -97,8 +97,24 @@ public enum MakeFlowBuilder {
         // + (always run).
         while let f = s.first, f == "@" || f == "-" || f == "+" { s.removeFirst() }
         s = s.trimmingCharacters(in: .whitespaces)
-        guard let word = s.split(separator: " ").first.map(String.init),
+        guard var word = s.split(separator: " ").first.map(String.init),
               !word.isEmpty else { return nil }
+        // Expand variables wherever they sit in the word, not only
+        // leading (`./$(TEST_BIN)` runs a program as surely as
+        // `$(CC)` does), bounded so a nested definition resolves and
+        // a self-referential one does not spin.
+        for _ in 0..<5 {
+            guard word.contains("$") else { break }
+            let before = word
+            for (name, value) in vars {
+                word = word.replacingOccurrences(of: "$(\(name))", with: value)
+                word = word.replacingOccurrences(of: "${\(name)}", with: value)
+            }
+            if word == before { break }
+        }
+        // An expansion can bring a whole command line with it; the
+        // program is still the first word.
+        if let first = word.split(separator: " ").first { word = String(first) }
         // A leading $(VAR) like $(CC): resolve to its assigned value so
         // the label reads "cc" (and matches what make echoes at build
         // time). Unknown vars fall back to the bare variable name.

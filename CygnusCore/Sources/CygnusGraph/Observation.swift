@@ -25,6 +25,10 @@ extension ObservationKind {
     /// dependency names a real file is resolution's problem, not the
     /// extractor's.
     public static let buildRule = ObservationKind("core:buildRule")
+    /// A CI workflow file runs a build command: ".github/workflows/
+    /// deploy.yml runs `fastlane ios beta`". Literal — which lane
+    /// that names is resolution's problem.
+    public static let ciInvocation = ObservationKind("core:ciInvocation")
     /// One authorship touch: this commit, by this author, changed
     /// this file. Literal — it says nothing about ownership.
     public static let authorship = ObservationKind("core:authorship")

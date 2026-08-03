@@ -94,20 +94,12 @@ import Foundation
         #expect(CIFlow.program(in: "./scripts/build.sh") == "build.sh")
     }
 
-    /// A target the two sides deliberately disagree about: the graph
-    /// expands `$(TARGET)` and drops `%.o`, because an entity needs a
-    /// stable identity and a pattern rule describes a shape rather
-    /// than a thing. The chart keeps both verbatim so its picture
-    /// stays connected. Comparing those would be comparing two
-    /// documented policies, not testing the projection.
-    private func isPolicyDivergent(_ label: String) -> Bool {
-        label.contains("$(") || label.contains("%") || label.contains("${")
-    }
-
     /// The fixture proves the mechanism; real Makefiles prove it
     /// survives contact. These are the repositories the CI Flow view
-    /// is actually used on.
-    @Test(arguments: ["cygnus", "otter"])
+    /// is actually used on. sloth is the variable-and-pattern-heavy
+    /// one: it joined this set on 2026-08-03, when the verbatim
+    /// spelling became a property and pattern rules became facts.
+    @Test(arguments: ["cygnus", "otter", "sloth"])
     func realMakefilesProjectIdentically(repo: String) async throws {
         let path = ("~/projects/\(repo)/Makefile" as NSString).expandingTildeInPath
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
@@ -115,14 +107,11 @@ import Foundation
         let fromGraph = CIFlow.from(snapshot: snapshot, buildFile: "Makefile")
         let fromFile = MakeFlowBuilder.build(makefileText: text)
 
-        // Compared by name and kind, not by row: once variable
-        // targets are set aside the two sides number their remaining
-        // rows differently, and row order is layout rather than
-        // content.
+        // Compared by name and kind, not by row: the two sides split
+        // multi-target rule lines differently, so row numbering is
+        // layout rather than content.
         func described(_ flow: CIFlow) -> Set<String> {
-            Set(flow.nodes
-                .filter { !isPolicyDivergent($0.label) }
-                .map { "\($0.kind.rawValue) \($0.label)" })
+            Set(flow.nodes.map { "\($0.kind.rawValue) \($0.label)" })
         }
         let onlyGraph = described(fromGraph).subtracting(described(fromFile))
             .sorted().joined(separator: ", ")
@@ -132,47 +121,40 @@ import Foundation
                 "\(repo) — only in graph: [\(onlyGraph)]  only in file: [\(onlyFile)]")
     }
 
-    /// sloth is the case where the two sides genuinely disagree, and
-    /// pinning it is more useful than filtering it away. Its Makefile
-    /// builds `$(TARGET)`, so:
-    ///
-    ///   - the graph expands the variable and names the target
-    ///     `sloth`, because an entity needs an identity a later
-    ///     revision can match;
-    ///   - the chart keeps `$(TARGET)` verbatim, because commit
-    ///     9342eea decided a variable target should read as written.
-    ///
-    /// Both are defensible and they cannot both be shown. Swapping the
-    /// chart onto the graph therefore changes what a user sees, which
-    /// is a decision to make deliberately rather than discover. If
-    /// this test fails, that decision was made — check it was on
-    /// purpose.
-    @Test func slothShowsTheExpansionDisagreement() async throws {
+    /// The expansion-versus-spelling decision, settled 2026-08-03:
+    /// the entity's identity is the expansion (`sloth`, so a later
+    /// revision can match it), and the chart reads as the file is
+    /// written (`$(TARGET)`, kept as `core:buildTargetVerbatim`).
+    /// Pattern rules are in the graph too, flagged — `%.o` is a
+    /// declared shape, not an artifact, but it is still a row.
+    @Test func theEntityIsTheExpansionAndTheChartIsTheSpelling() async throws {
         let path = ("~/projects/sloth/Makefile" as NSString).expandingTildeInPath
         guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return }
         let snapshot = try await indexed(makefile: text)
-        let graphLabels = Set(CIFlow.from(snapshot: snapshot, buildFile: "Makefile")
-            .nodes.map(\.label))
-        let fileLabels = Set(MakeFlowBuilder.build(makefileText: text).nodes.map(\.label))
 
-        // The graph names what actually gets built.
-        #expect(graphLabels.contains("sloth"))
-        #expect(!graphLabels.contains("$(TARGET)"))
-        // The chart names what the file says.
-        #expect(fileLabels.contains("$(TARGET)"))
-        #expect(!fileLabels.contains("sloth"))
-        // And everything outside that disagreement matches, which is
-        // what makes the swap a decision rather than a rewrite.
-        let plain = { (labels: Set<String>) in
-            labels.filter { !self.isPolicyDivergent($0)
-                && !["sloth", "sloth_test", "MAKE"].contains($0) }
-        }
-        #expect(plain(graphLabels) == plain(fileLabels))
+        // The graph names what actually gets built…
+        let entities = snapshot.nodes.filter { $0.kind == "core:buildTarget" }
+        #expect(entities.contains { $0.label == "sloth" })
+        #expect(!entities.contains { $0.label == "$(TARGET)" })
+        // …and remembers the spelling and the shape.
+        let sloth = entities.first { $0.label == "sloth" }
+        #expect(sloth?.attributes["core:buildTargetVerbatim"] == "$(TARGET)")
+        let pattern = entities.first { $0.label == "%.o" }
+        #expect(pattern?.attributes["core:buildPattern"] == "true")
+
+        // The chart shows the file's own words.
+        let chartLabels = Set(CIFlow.from(snapshot: snapshot, buildFile: "Makefile")
+            .nodes.map(\.label))
+        #expect(chartLabels.contains("$(TARGET)"))
+        #expect(chartLabels.contains("%.o"))
+        #expect(!chartLabels.contains("sloth"))
     }
 
     // MARK: - fastlane
 
-    private func indexedFastfile(_ text: String) async throws -> GraphSnapshot {
+    private func indexedFastfile(_ text: String,
+                                 workflow: (name: String, text: String)? = nil)
+    async throws -> GraphSnapshot {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cygnus-lane-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
@@ -180,6 +162,13 @@ import Foundation
         defer { try? FileManager.default.removeItem(at: root) }
         try text.write(to: root.appendingPathComponent("fastlane/Fastfile"),
                        atomically: true, encoding: .utf8)
+        if let workflow {
+            let workflows = root.appendingPathComponent(".github/workflows")
+            try FileManager.default.createDirectory(at: workflows,
+                                                    withIntermediateDirectories: true)
+            try workflow.text.write(to: workflows.appendingPathComponent(workflow.name),
+                                    atomically: true, encoding: .utf8)
+        }
         let engine = WorkspaceGraphEngine(directory: FileManager.default.temporaryDirectory
             .appendingPathComponent("cygnus-lane-ws-\(UUID().uuidString)"))
         var snapshot: GraphSnapshot?
@@ -227,27 +216,82 @@ import Foundation
         #expect(flow.edges.contains { $0.to == "lane:setup" })
     }
 
-    /// The half of the fastlane chart the graph cannot produce.
-    /// Trigger nodes name the CI workflow file that invokes a lane,
-    /// and nothing extracts GitHub workflows into the graph — so a
-    /// swap would silently drop them. Recorded here rather than
-    /// discovered later.
-    @Test func triggersAreMissingBecauseWorkflowsAreNotInTheGraph() async throws {
+    /// The half of the fastlane chart the graph could not produce
+    /// until 2026-08-03: trigger nodes name the CI workflow file
+    /// that invokes a lane. Workflows are extracted now
+    /// (`core:ciInvocation` → `core:invokes`), so the two sides must
+    /// draw the same trigger column — ids and edges included, because
+    /// the build tracker matches on them.
+    @Test func triggersComeFromWorkflowEvidenceInTheGraph() async throws {
+        let snapshot = try await indexedFastfile(fastfile, workflow: (
+            name: "deploy.yml",
+            text: """
+                jobs:
+                  beta:
+                    steps:
+                      - run: bundle exec fastlane ios beta
+                """))
+        let flow = CIFlow.from(snapshot: snapshot, buildFile: "fastlane/Fastfile")
+        let fromFile = FastlaneFlowBuilder.build(
+            info: FastlaneInfo(lanes: [], appfile: [],
+                               ciInvocations: ["deploy.yml: bundle exec fastlane ios beta"]),
+            fastfileText: fastfile)
+
+        let graphTriggers = flow.nodes.filter { $0.kind == .trigger }
+        let fileTriggers = fromFile.nodes.filter { $0.kind == .trigger }
+        #expect(graphTriggers == fileTriggers,
+                "graph: \(graphTriggers)  file: \(fileTriggers)")
+        #expect(graphTriggers.contains { $0.label == "deploy.yml" })
+        #expect(flow.edges.contains { $0.from == "trigger:beta:deploy.yml"
+                                      && $0.to == "lane:beta" })
+        // The workflow names beta, not setup — no trigger is invented
+        // for a lane it does not run.
+        #expect(!flow.edges.contains { $0.to == "lane:setup"
+                                       && $0.from.hasPrefix("trigger:") })
+    }
+
+    /// A Fastfile with no workflow evidence still charts — it just
+    /// has no trigger column, exactly like the file parser given no
+    /// CI invocations.
+    @Test func noWorkflowsMeansNoTriggers() async throws {
         let snapshot = try await indexedFastfile(fastfile)
         let flow = CIFlow.from(snapshot: snapshot, buildFile: "fastlane/Fastfile")
         #expect(!flow.nodes.contains { $0.kind == .trigger })
-
-        let withTriggers = FastlaneFlowBuilder.build(
-            info: FastlaneInfo(lanes: [], appfile: [],
-                               ciInvocations: ["deploy.yml: fastlane ios beta"]),
-            fastfileText: fastfile)
-        #expect(withTriggers.nodes.contains { $0.kind == CIFlow.NodeKind.trigger
-                                              && $0.label == "deploy.yml" },
-                "the file parser draws triggers the graph has no evidence for")
     }
 
     @Test func aSnapshotWithNoBuildTargetsMakesAnEmptyFlow() {
         let flow = CIFlow.from(snapshot: GraphSnapshot(nodes: [], edges: []))
         #expect(flow.isEmpty)
+    }
+}
+
+// The swap itself: once a repo has a snapshot, the chart the app
+// shows is the graph's projection, not the capability scan's parse.
+@Suite @MainActor struct CIFlowSwapTests {
+    @Test func theStoreChartsFromTheGraphOnceAnalyzed() throws {
+        let store = WorkspaceStore(
+            engine: FixtureGraphEngine(),
+            persistence: WorkspacePersistence(fileURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent("cygnus-swap-\(UUID().uuidString).json")))
+        let repo = RegisteredRepo(displayName: "fixture", pathHint: "/tmp/fixture",
+                                  bookmark: Data())
+        store.testInject(repo: repo)
+        // Before analysis there is no snapshot and no capability scan
+        // in this test, so there is nothing to chart.
+        #expect(store.ciFlow(for: repo.id) == nil)
+
+        let snapshot = GraphSnapshot(nodes: [
+            GraphSnapshot.Node(id: "build:target:r/Makefile#all", kind: "core:buildTarget",
+                               label: "all", path: "Makefile",
+                               attributes: ["core:buildSystem": "make",
+                                            "core:buildOrder": "0",
+                                            "core:buildPhony": "true"]),
+        ], edges: [])
+        store.testApply(.finished(snapshot), to: repo.id)
+
+        let flow = try #require(store.ciFlow(for: repo.id))
+        #expect(flow.source == .make)
+        #expect(flow.nodes.contains { $0.kind == .lane && $0.label == "all" })
+        #expect(flow.nodes.contains { $0.kind == .trigger && $0.label == "make" })
     }
 }

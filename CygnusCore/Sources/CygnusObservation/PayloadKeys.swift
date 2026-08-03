@@ -17,6 +17,21 @@ public enum ObservationPayload {
     public static let header = "core:header"
     /// Build target or lane name (build-rule observations).
     public static let buildTarget = "core:buildTarget"
+    /// The spelling the build file uses when it is not the expanded
+    /// name — `$(TARGET)` for a target whose identity is `sloth`.
+    /// The expansion is the identity a revision can match; the
+    /// spelling is what the file's author wrote, and a chart that
+    /// wants to read like the file needs it.
+    public static let buildTargetVerbatim = "core:buildTargetVerbatim"
+    /// True for a pattern or suffix rule (`%.o`) — a declared shape,
+    /// not an artifact that gets built.
+    public static let buildPattern = "core:buildPattern"
+    /// True when the target is declared `.PHONY` — a command, not a
+    /// file the build produces.
+    public static let buildPhony = "core:buildPhony"
+    /// The command line a CI workflow file runs (ci-invocation
+    /// observations), verbatim — e.g. "bundle exec fastlane ios beta".
+    public static let ciCommand = "core:ciCommand"
     /// One thing the target is written to depend on, verbatim — a
     /// path, another target, or a variable that was never expanded.
     public static let buildDependency = "core:buildDependency"

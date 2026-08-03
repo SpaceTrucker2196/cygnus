@@ -7,6 +7,11 @@ import Foundation
 
 public struct MakeRule: Sendable, Equatable {
     public let target: String
+    /// The spelling the file uses when it differs from `target` —
+    /// `$(TARGET)` where `target` is the expansion `sloth`. The
+    /// expansion is the identity; the spelling is still a fact, and
+    /// it is what the file's author reads.
+    public let verbatim: String?
     /// Prerequisites verbatim, in declaration order.
     public let prerequisites: [String]
     /// Recipe command lines in execution order, with make's line
@@ -15,13 +20,20 @@ public struct MakeRule: Sendable, Equatable {
     /// the target does.
     public let recipe: [String]
     public let isPhony: Bool
+    /// A pattern or suffix rule (`%.o`). It describes a shape rather
+    /// than an artifact, but it is still a declared, stable, named
+    /// piece of the build — flagged so consumers can tell the two
+    /// apart instead of the fact being dropped.
+    public let isPattern: Bool
 
-    public init(target: String, prerequisites: [String],
-                recipe: [String] = [], isPhony: Bool) {
+    public init(target: String, verbatim: String? = nil, prerequisites: [String],
+                recipe: [String] = [], isPhony: Bool, isPattern: Bool = false) {
         self.target = target
+        self.verbatim = verbatim
         self.prerequisites = prerequisites
         self.recipe = recipe
         self.isPhony = isPhony
+        self.isPattern = isPattern
     }
 }
 
@@ -61,10 +73,11 @@ public enum MakefileRules {
                 // file can know them.
                 let expanded = expand(command, with: variables)
                 for index in currentRules where rules[index].recipe.count < maxRecipeLines {
-                    rules[index] = MakeRule(target: rules[index].target,
-                                            prerequisites: rules[index].prerequisites,
-                                            recipe: rules[index].recipe + [expanded],
-                                            isPhony: rules[index].isPhony)
+                    let rule = rules[index]
+                    rules[index] = MakeRule(target: rule.target, verbatim: rule.verbatim,
+                                            prerequisites: rule.prerequisites,
+                                            recipe: rule.recipe + [expanded],
+                                            isPhony: rule.isPhony, isPattern: rule.isPattern)
                 }
                 continue
             }
@@ -93,16 +106,25 @@ public enum MakefileRules {
                 .split(separator: " ").map(String.init)
                 .filter { !$0.isEmpty }
 
-            for expanded in expand(lhs, with: variables)
-                .split(separator: " ").map(String.init) {
-                // Pattern and suffix rules (%.o, .c.o) describe a
-                // shape, not a thing — they have no identity to give
-                // an entity.
-                guard !expanded.isEmpty, !expanded.contains("%"), expanded != ".PHONY"
-                else { continue }
-                currentRules.append(rules.count)
-                rules.append(MakeRule(target: expanded, prerequisites: prerequisites,
-                                      isPhony: phony.contains(expanded)))
+            // Expand per spelled token, not the joined line: the
+            // spelling is a fact worth keeping, and it belongs to the
+            // token it expanded from, not to the whole left-hand side.
+            for spelled in lhs.split(separator: " ").map(String.init) {
+                for expanded in expand(spelled, with: variables)
+                    .split(separator: " ").map(String.init) {
+                    guard !expanded.isEmpty, expanded != ".PHONY" else { continue }
+                    currentRules.append(rules.count)
+                    rules.append(MakeRule(
+                        target: expanded,
+                        verbatim: spelled == expanded ? nil : spelled,
+                        prerequisites: prerequisites,
+                        isPhony: phony.contains(expanded),
+                        // A pattern or suffix rule describes a shape,
+                        // not an artifact — kept, but flagged, so the
+                        // chart can draw the row without the graph
+                        // pretending `%.o` gets built.
+                        isPattern: expanded.contains("%")))
+                }
             }
         }
         // A target may be stated more than once (rules split across
@@ -114,6 +136,8 @@ public enum MakefileRules {
         var order: [String] = []
         var prerequisites: [String: [String]] = [:]
         var recipes: [String: [String]] = [:]
+        var verbatims: [String: String] = [:]
+        var patterns: Set<String> = []
         for rule in rules {
             if prerequisites[rule.target] == nil { order.append(rule.target) }
             var existing = prerequisites[rule.target] ?? []
@@ -126,10 +150,16 @@ public enum MakefileRules {
             // non-empty rather than concatenating two alternatives
             // into a sequence that never runs.
             if !rule.recipe.isEmpty { recipes[rule.target] = rule.recipe }
+            if let verbatim = rule.verbatim, verbatims[rule.target] == nil {
+                verbatims[rule.target] = verbatim
+            }
+            if rule.isPattern { patterns.insert(rule.target) }
         }
         return order.map {
-            MakeRule(target: $0, prerequisites: prerequisites[$0] ?? [],
-                     recipe: recipes[$0] ?? [], isPhony: phony.contains($0))
+            MakeRule(target: $0, verbatim: verbatims[$0],
+                     prerequisites: prerequisites[$0] ?? [],
+                     recipe: recipes[$0] ?? [], isPhony: phony.contains($0),
+                     isPattern: patterns.contains($0))
         }
     }
 
@@ -182,14 +212,23 @@ public enum MakefileRules {
         return result
     }
 
-    /// One level of `$(NAME)` / `${NAME}` substitution. One level, not
-    /// a fixpoint: a variable defined in terms of itself must not spin.
+    /// `$(NAME)` / `${NAME}` substitution, bounded rather than one
+    /// pass or a fixpoint: a nested definition (`TEST_BIN =
+    /// $(TARGET)_test`) needs a second pass — and needs it
+    /// *deterministically*, where a single pass over an unordered
+    /// dictionary resolved it only when iteration order happened to
+    /// cooperate — while a variable defined in terms of itself must
+    /// not spin.
     static func expand(_ word: String, with variables: [String: String]) -> String {
-        guard word.contains("$") else { return word }
         var result = word
-        for (name, value) in variables {
-            result = result.replacingOccurrences(of: "$(\(name))", with: value)
-            result = result.replacingOccurrences(of: "${\(name)}", with: value)
+        for _ in 0..<5 {
+            guard result.contains("$") else { break }
+            let before = result
+            for (name, value) in variables {
+                result = result.replacingOccurrences(of: "$(\(name))", with: value)
+                result = result.replacingOccurrences(of: "${\(name)}", with: value)
+            }
+            if result == before { break }
         }
         return result.trimmingCharacters(in: .whitespaces)
     }

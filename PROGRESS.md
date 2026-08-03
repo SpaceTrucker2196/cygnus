@@ -247,3 +247,26 @@
   check + a real repo added through the panel and scanning. Rerun
   `make test` after reboot to confirm UI tests pass in a clean
   session.
+
+## 2026-08-03 — CI Flow is a projection
+
+- The CI Flow chart is now built from the graph
+  (`CIFlow.projected(from:)`) whenever the repo has a snapshot; the
+  capability scan's file parse remains only for the pre-analysis
+  window. Differential tests pin graph-vs-file identity on the real
+  Makefiles (cygnus, otter, sloth) and on fastlane triggers.
+- The expansion-versus-spelling decision (Jeff, 2026-08-03): entity
+  identity stays the expanded name (`sloth`); the file's spelling
+  (`$(TARGET)`) rides along as `core:buildTargetVerbatim` and labels
+  the chart. Pattern rules (`%.o`) are recorded and flagged
+  (`core:buildPattern`); `.PHONY` too (`core:buildPhony`).
+- New evidence: `.github/workflows/*.yml` extracted
+  (`core:ciInvocation` → `core:invokes` edge from workflow file to
+  lane), which required letting `.github` through LocalFSProvider's
+  hidden-entry filter — the workflows never reached the manifest at
+  all before.
+- Fixed en route: recipe attachment dropped verbatim/pattern flags on
+  reconstruction; `MakefileRules.expand` resolved nested variables
+  only when dictionary order cooperated (now a bounded deterministic
+  fixpoint); step labels converge on expansion in both constructions
+  (`sloth_test`, and unresolved `$(MAKE)` reads `MAKE`).

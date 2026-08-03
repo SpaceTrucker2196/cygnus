@@ -32,6 +32,13 @@ public struct BuildExtractor: ObservationExtractor {
         if name == "Fastfile", path.contains("fastlane/") || path == "Fastfile" {
             return "fastlane"
         }
+        // CI workflows are build evidence too: they are where a lane
+        // gets invoked, and without them a pipeline chart has no
+        // trigger column.
+        if path.hasPrefix(".github/workflows/"),
+           path.hasSuffix(".yml") || path.hasSuffix(".yaml") {
+            return "github-actions"
+        }
         return nil
     }
 
@@ -40,15 +47,39 @@ public struct BuildExtractor: ObservationExtractor {
         let text = String(decoding: content, as: UTF8.self)
         return switch system {
         case "make": makeObservations(text, file: file)
+        case "github-actions": workflowObservations(text, file: file)
         default: fastlaneObservations(text, file: file)
         }
     }
 
     private func makeObservations(_ text: String, file: SnapshotFile) -> [Observation] {
         MakefileRules.parse(text).enumerated().flatMap { order, rule in
-            observations(target: rule.target, dependencies: rule.prerequisites,
+            observations(target: rule.target, verbatim: rule.verbatim,
+                         isPattern: rule.isPattern, isPhony: rule.isPhony,
+                         dependencies: rule.prerequisites,
                          steps: rule.recipe, order: order, system: "make", file: file)
         }
+    }
+
+    /// Lines in a workflow yml that run fastlane, kept verbatim. The
+    /// literal fact is "this workflow runs this command"; which lane
+    /// the command names is resolution's problem.
+    private func workflowObservations(_ text: String, file: SnapshotFile) -> [Observation] {
+        var result: [Observation] = []
+        for rawLine in text.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.hasPrefix("#"),
+                  let range = line.range(of: #"(bundle exec )?fastlane\s+\S.*"#,
+                                         options: .regularExpression)
+            else { continue }
+            result.append(Observation(
+                kind: .ciInvocation,
+                file: SourceAnchor(path: file.path, blob: file.blob, range: nil),
+                payload: [ObservationPayload.ciCommand: .string(String(line[range])),
+                          ObservationPayload.buildSystem: .string("github-actions")],
+                extractor: identity))
+        }
+        return result
     }
 
     private func fastlaneObservations(_ text: String, file: SnapshotFile) -> [Observation] {
@@ -62,7 +93,9 @@ public struct BuildExtractor: ObservationExtractor {
     /// dependency. Split so a target with nothing to depend on is
     /// still a fact, and so provenance points at the exact statement
     /// that supports each edge.
-    private func observations(target: String, dependencies: [String],
+    private func observations(target: String, verbatim: String? = nil,
+                              isPattern: Bool = false, isPhony: Bool = false,
+                              dependencies: [String],
                               steps: [String] = [], order: Int = 0, system: String,
                               file: SnapshotFile) -> [Observation] {
         var payload: [String: PropertyValue] = [
@@ -70,6 +103,9 @@ public struct BuildExtractor: ObservationExtractor {
             ObservationPayload.buildSystem: .string(system),
             ObservationPayload.buildOrder: .int(Int64(order)),
         ]
+        if let verbatim { payload[ObservationPayload.buildTargetVerbatim] = .string(verbatim) }
+        if isPattern { payload[ObservationPayload.buildPattern] = .bool(true) }
+        if isPhony { payload[ObservationPayload.buildPhony] = .bool(true) }
         // Order carries the meaning, so the steps ride as an ordered
         // array on the target's existence observation rather than as
         // one observation each — a set of commands would not say what

@@ -11,10 +11,24 @@ extension WorkspaceStore {
         builds[id] ?? BuildProgress()
     }
 
+    /// The pipeline to chart and run: a projection of the graph once
+    /// the repo has been analyzed, the capability scan's file parse
+    /// until then. The projection is the real thing — the fallback
+    /// only covers the window before a first snapshot exists, and the
+    /// differential tests in CIFlowProjectionTests are the proof the
+    /// two draw the same chart.
+    public func ciFlow(for id: UUID) -> CIFlow? {
+        if case .ready(let snapshot)? = states[id],
+           let flow = CIFlow.projected(from: snapshot) {
+            return flow
+        }
+        return factoryState(for: id).caps.ciFlow
+    }
+
     /// Whether Run is offered: a non-empty Makefile flow that isn't
     /// already building.
     public func canBuild(_ id: UUID) -> Bool {
-        guard let flow = factoryState(for: id).caps.ciFlow else { return false }
+        guard let flow = ciFlow(for: id) else { return false }
         return flow.source == .make && !flow.isEmpty && buildProgress(for: id).phase != .running
     }
 
@@ -22,7 +36,7 @@ extension WorkspaceStore {
     /// animation. No-op if it can't run.
     public func startBuild(for id: UUID, locator: ToolLocator = .resolve()) {
         guard canBuild(id),
-              let flow = factoryState(for: id).caps.ciFlow,
+              let flow = ciFlow(for: id),
               let root = repoURL(id) else { return }
         guard let makePath = locator.path(for: .make) else {
             var failed = BuildProgress()

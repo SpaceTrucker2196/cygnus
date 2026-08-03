@@ -103,6 +103,10 @@ extension RelationshipKind {
     /// coupling can be charted (or hidden) on its own, and so the
     /// derived import rollups stay unambiguous.
     public static let builds = RelationshipKind("core:builds")
+    /// CI workflow file → build target: the workflow's command line
+    /// names this lane. What puts the trigger column on a fastlane
+    /// pipeline chart.
+    public static let invokes = RelationshipKind("core:invokes")
     /// File → person: this person has committed to this file, with a
     /// commit count. Derived — arithmetic over authorship
     /// observations.

@@ -82,10 +82,16 @@ public enum Resolver {
         // are one pass, done up front.
         let manifestPaths = Set(manifest.files.map(\.path))
         var buildTargets: [String: Set<String>] = [:]
+        // Which build files are Fastfiles, so a CI invocation can be
+        // matched against the lanes the repository actually declares.
+        var fastlaneFiles: Set<String> = []
         for fileObs in files {
             for (_, obs) in fileObs.observations where obs.kind == .buildRule {
                 if case .string(let name)? = obs.payload[ObservationPayload.buildTarget] {
                     buildTargets[fileObs.file.path, default: []].insert(name)
+                    if case .string("fastlane")? = obs.payload[ObservationPayload.buildSystem] {
+                        fastlaneFiles.insert(fileObs.file.path)
+                    }
                 }
             }
         }
@@ -202,6 +208,19 @@ public enum Resolver {
                     if case .int(let order)? = obs.payload[ObservationPayload.buildOrder] {
                         properties[ObservationPayload.buildOrder] = .int(order)
                     }
+                    // The expansion is the identity; the spelling the
+                    // file uses is still a fact, and the CI Flow chart
+                    // labels rows with it.
+                    if case .string(let verbatim)?
+                        = obs.payload[ObservationPayload.buildTargetVerbatim] {
+                        properties[ObservationPayload.buildTargetVerbatim] = .string(verbatim)
+                    }
+                    if case .bool(true)? = obs.payload[ObservationPayload.buildPattern] {
+                        properties[ObservationPayload.buildPattern] = .bool(true)
+                    }
+                    if case .bool(true)? = obs.payload[ObservationPayload.buildPhony] {
+                        properties[ObservationPayload.buildPhony] = .bool(true)
+                    }
                     assert(EntityAssertion(
                         stableKey: targetKey, kind: .buildTarget, repository: repository,
                         name: target, properties: properties,
@@ -228,6 +247,27 @@ public enum Resolver {
                         changes.relationships.append(RelationshipAssertion(
                             source: targetKey, target: resolved, kind: .builds,
                             layer: .observed, supportedBy: [obsID]))
+                    }
+
+                case .ciInvocation:
+                    guard case .string(let command)?
+                            = obs.payload[ObservationPayload.ciCommand]
+                    else { continue }
+                    // The lane is the last token that names a lane a
+                    // Fastfile in this repository declares — the same
+                    // rule the chart's own workflow scan uses. A
+                    // command naming no known lane gets no edge; the
+                    // observation still records that it runs.
+                    let tokens = command.split(separator: " ").map(String.init)
+                    for fastfile in fastlaneFiles.sorted() {
+                        guard let lane = tokens.last(where: {
+                            buildTargets[fastfile]?.contains($0) ?? false
+                        }) else { continue }
+                        changes.relationships.append(RelationshipAssertion(
+                            source: fileKey,
+                            target: StableKeys.buildTarget(repository, path: fastfile,
+                                                           name: lane),
+                            kind: .invokes, layer: .observed, supportedBy: [obsID]))
                     }
 
                 default:

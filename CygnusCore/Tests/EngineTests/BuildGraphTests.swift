@@ -46,6 +46,17 @@ import CygnusObservation
             end
             """.write(to: fastlane.appendingPathComponent("Fastfile"),
                       atomically: true, encoding: .utf8)
+        let workflows = root.appendingPathComponent(".github/workflows")
+        try FileManager.default.createDirectory(at: workflows,
+                                                withIntermediateDirectories: true)
+        try """
+            name: Deploy
+            jobs:
+              beta:
+                steps:
+                  - run: bundle exec fastlane ios beta
+            """.write(to: workflows.appendingPathComponent("deploy.yml"),
+                      atomically: true, encoding: .utf8)
         return root
     }
 
@@ -130,6 +141,32 @@ import CygnusObservation
             stableKey: StableKeys.buildTarget(repo, path: "fastlane/Fastfile", name: "beta"),
             at: .current))
         #expect(beta.version.properties["core:buildSystem"] == .string("fastlane"))
+    }
+
+    /// A CI workflow whose command line names a lane invokes it —
+    /// the fact that puts trigger columns on a fastlane pipeline
+    /// chart without a second scan of .github/workflows.
+    @Test func workflowInvocationsLinkToTheLaneTheyName() async throws {
+        let root = try makeFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+        let store = await workspace.store
+
+        let invokes = try store.relationships(kind: .invokes, at: .current)
+        let entityIDs = Set(invokes.flatMap { [$0.source, $0.target] })
+        let byID = Dictionary(uniqueKeysWithValues: try store
+            .entities(ids: Array(entityIDs), at: .current)
+            .map { ($0.entity.id, $0) })
+        let pairs = Set(invokes.compactMap { edge -> String? in
+            guard let from = byID[edge.source], let to = byID[edge.target] else { return nil }
+            return "\(from.version.name)→\(to.version.name)"
+        })
+        #expect(pairs.contains("deploy.yml→beta"), "expected deploy.yml→beta in \(pairs)")
+        // The command names beta, not setup — no edge is invented for
+        // lanes the workflow does not run.
+        #expect(!pairs.contains { $0.hasSuffix("→setup") })
     }
 
     /// Build facts carry provenance like every other derived or

@@ -84,9 +84,14 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       Migration front added *(2026-08-03)*: name two modules, see
       migrated / straddling / not-migrated counts, with the pair
       chosen by the user rather than inferred.
-      Remaining candidates: departed-author staleness (needs dates in
-      the snapshot), and CI Flow as a graph projection so the second
-      Make parser can go. **Refused:** forgotten/dead-code detection —
+      CI Flow became a graph projection *(2026-08-03)*: verbatim
+      spellings and pattern rules recorded as build facts, GitHub
+      workflow → lane invocations extracted (`core:invokes`), and the
+      app charts `CIFlow.projected(from:)` once a snapshot exists —
+      the file parsers survive only as the pre-analysis fallback,
+      pinned by differential tests on cygnus/otter/sloth.
+      Remaining candidate: departed-author staleness (needs dates in
+      the snapshot). **Refused:** forgotten/dead-code detection —
       measured a majority of false positives on cygnus itself because
       index coverage does not span the app and package targets;
       reasoning and the numbers in `docs/wiki/visualization-ideas.md`.

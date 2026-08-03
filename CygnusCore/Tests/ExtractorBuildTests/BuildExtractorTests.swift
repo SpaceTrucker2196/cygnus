@@ -96,9 +96,11 @@ import CygnusProviders
                 "continuation lines should join: \(deps)")
     }
 
-    /// Pattern rules describe a shape, not a thing, so they have no
-    /// identity to give an entity. Assignments are not rules.
-    @Test func skipsPatternRulesAndAssignments() throws {
+    /// Pattern rules describe a shape, not an artifact — kept as
+    /// facts, flagged as patterns, so the CI Flow chart can draw the
+    /// row without the graph pretending `%.o` gets built. Assignments
+    /// are still not rules.
+    @Test func keepsPatternRulesFlaggedAndSkipsAssignments() throws {
         let observed = try observations("""
             CC := clang
             CFLAGS ?= -O2
@@ -109,7 +111,85 @@ import CygnusProviders
 
             app: main.o
             """, path: "Makefile")
-        #expect(targets(observed) == ["app"])
+        #expect(targets(observed) == ["%.o", "app"])
+        let pattern = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("%.o")
+        })
+        #expect(pattern.payload[ObservationPayload.buildPattern] == .bool(true))
+        let app = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("app")
+        })
+        #expect(app.payload[ObservationPayload.buildPattern] == nil)
+    }
+
+    /// `$(TARGET)` expands to the entity's identity, but the spelling
+    /// the file uses is a fact too — the chart reads as written.
+    @Test func recordsTheVerbatimSpellingWhenExpansionChangedIt() throws {
+        let observed = try observations("""
+            TARGET = app
+
+            $(TARGET): main.c
+            \tclang -o $(TARGET) main.c
+
+            clean:
+            \trm -f $(TARGET)
+            """, path: "Makefile")
+        #expect(targets(observed) == ["app", "clean"])
+        let app = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("app")
+        })
+        #expect(app.payload[ObservationPayload.buildTargetVerbatim] == .string("$(TARGET)"))
+        let clean = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("clean")
+        })
+        #expect(clean.payload[ObservationPayload.buildTargetVerbatim] == nil)
+    }
+
+    /// `.PHONY` is a declaration about the target, recorded with it.
+    @Test func recordsPhoniness() throws {
+        let observed = try observations("""
+            .PHONY: all
+            all: app
+            app: main.c
+            \tclang -o app main.c
+            """, path: "Makefile")
+        let all = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("all")
+        })
+        #expect(all.payload[ObservationPayload.buildPhony] == .bool(true))
+        let app = try #require(observed.first {
+            $0.payload[ObservationPayload.buildTarget] == .string("app")
+        })
+        #expect(app.payload[ObservationPayload.buildPhony] == nil)
+    }
+
+    // MARK: - CI workflows
+
+    @Test func claimsWorkflowFilesOnlyUnderGithubWorkflows() {
+        let extractor = BuildExtractor()
+        #expect(extractor.claims(file: file(".github/workflows/ci.yml")))
+        #expect(extractor.claims(file: file(".github/workflows/deploy.yaml")))
+        #expect(!extractor.claims(file: file(".github/dependabot.yml")))
+        #expect(!extractor.claims(file: file("config/pipeline.yml")))
+    }
+
+    /// The literal fact is the command line a workflow runs. Which
+    /// lane it names is resolution's problem.
+    @Test func readsFastlaneInvocationsFromWorkflows() throws {
+        let observed = try observations("""
+            name: Deploy
+            jobs:
+              beta:
+                steps:
+                  - run: bundle exec fastlane ios beta
+                  # - run: fastlane ios commented_out
+                  - run: echo done
+            """, path: ".github/workflows/deploy.yml")
+        #expect(observed.count == 1)
+        let invocation = try #require(observed.first)
+        #expect(invocation.kind == .ciInvocation)
+        #expect(invocation.payload[ObservationPayload.ciCommand]
+                == .string("bundle exec fastlane ios beta"))
     }
 
     /// The same target stated twice is one target, not two.

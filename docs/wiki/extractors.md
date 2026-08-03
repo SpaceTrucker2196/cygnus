@@ -57,9 +57,11 @@ Two deliberate limits:
   variable, a tool on `PATH`, a generated file — produces **no edge**.
   The observation is still recorded, so the evidence is not lost, but
   the graph does not invent a target for it.
-- Only *simple* variable assignments are expanded, one level deep. A
-  recursively-defined variable stays verbatim rather than becoming a
-  wrong answer.
+- Only *simple* variable assignments are expanded, a bounded number
+  of passes deep (nested definitions like `TEST_BIN = $(TARGET)_test`
+  resolve; self-referential ones stop rather than spin). A variable
+  that never resolves stays verbatim rather than becoming a wrong
+  answer.
 
 Targets also carry their **recipe** — the commands they run, in
 order, as a `core:buildSteps` property rather than one entity per
@@ -68,70 +70,69 @@ them would bloat the graph to say what an ordered list already says.
 Order is the fact: a recipe is a sequence, and a set of commands would
 not tell you what the target does.
 
-### The duplicated parser, on purpose
+### The duplicated parser, and how it ended
 
 `CygnusExtractorBuild.MakefileRules` and the app-side
 `MakeFlowBuilder` (`Sources/CygnusKit/MakeFlow.swift`) both parse Make
-rules, and that duplication is intentional for now.
+rules. That duplication was intentional while the two wanted
+different things — the extractor wanted coupling, the flow builder
+wanted a laid-out chart — and it ended on 2026-08-03: the CI Flow the
+app shows is `CIFlow.projected(from:)`, a **projection of the graph**
+like every other view, as soon as the repo has a snapshot.
 
-They want different things. The extractor wants targets and
-prerequisites — the coupling. The flow builder additionally wants
-recipe command words and their order, because it draws a flowchart,
-and its `CIFlow` model carries `column`/`row`: it is a rendering type
-and does not belong in the engine.
+The file parsers are still in the tree for exactly one job: charting
+a repo in the window before its first analysis finishes, when there
+is no graph to project. `CIFlowProjectionTests` diffs the two
+constructions against the real Makefiles this view is used on
+(cygnus, otter, sloth) so the fallback cannot silently drift from
+the projection. When the pre-analysis window stops mattering, the
+parsers go.
 
-The end state is better than either: once build facts are in the
-graph, the CI Flow chart should be a **projection of the graph** like
-every other view, and the second parser disappears.
+### The expansion-versus-spelling decision (settled 2026-08-03)
 
-**The blocker is gone as of 2026-08-03.** Recipes and their order are
-in the graph, `CIFlow.from(snapshot:)` builds the chart from it, and
-`CIFlowProjectionTests` diffs the two constructions against real
-Makefiles. cygnus and otter project identically. Nothing is wired up
-yet — the swap is one line, and it is blocked on a decision rather
-than on work.
+sloth's Makefile builds `$(TARGET)`, and the two sides disagreed
+about what to call it: the graph expanded the variable to `sloth`
+(an entity needs an identity a later revision can match), the chart
+kept `$(TARGET)` verbatim (decided in 9342eea so variable and
+pattern targets stay visible). Of the three ways out — accept the
+new labels, record the spelling alongside the expansion, or keep the
+parser forever — Jeff chose the middle one:
 
-### The decision the swap needs
+- The entity's **identity is the expansion** (`sloth`). Unchanged.
+- The **spelling rides along** as `core:buildTargetVerbatim` when it
+  differs, and the projection labels rows with it — the chart reads
+  as the file is written, exactly as before the swap.
+- **Pattern rules are facts now.** `%.o` is a `core:buildTarget`
+  flagged `core:buildPattern`: a declared shape rather than an
+  artifact, but a stable, named, recipe-carrying piece of the build,
+  and a row the chart must not lose. `.PHONY` travels the same way
+  (`core:buildPhony`), so the entry node can say `make` vs `goal`
+  without re-reading the file.
 
-sloth's Makefile builds `$(TARGET)`, and the two sides disagree about
-what to call it:
+Step labels stay expanded (`cc`, not `$(CC)` — the 9342eea
+readability), and both constructions now expand mid-word variables
+and reduce an unresolvable `$(MAKE)` to `MAKE`, so the differential
+holds on sloth too.
 
-- The **graph** expands the variable and names the target `sloth`,
-  because an entity needs an identity a later revision can match, and
-  `$(TARGET)` is not one — it is a different string every time the
-  variable changes.
-- The **chart** keeps `$(TARGET)` verbatim, decided in 9342eea so that
-  variable and pattern targets stay visible and the picture stays
-  connected. It also draws `%.o`, which the graph deliberately has no
-  entity for: a pattern rule describes a shape, not a thing.
+### Fastlane triggers come from workflow evidence (2026-08-03)
 
-Both are right for their own purpose and they cannot both be shown.
-Swapping the chart onto the graph therefore *changes what a user
-sees* — `sloth` instead of `$(TARGET)`, and no `%.o` row. Arguably an
-improvement, since it names what actually gets built, but it is a
-change to make on purpose rather than discover afterwards.
+Trigger nodes name the CI workflow file that invokes a lane
+("deploy.yml"). These were the half of the fastlane chart the graph
+could not produce — nothing extracted `.github/workflows`, and in
+fact `LocalFSProvider` skipped all hidden directories, so the
+workflows never even reached the manifest. Now:
 
-Three ways out, in increasing cost: accept the new labels; record the
-verbatim name alongside the expanded one so the chart can choose; or
-leave the chart parsing files forever and accept the duplication. The
-test pins the current disagreement, so whichever is chosen, the
-choice is visible.
-
-### The fastlane half needs new evidence
-
-Lanes project cleanly — `lane:` ids, sub-lane calls drawn as calls and
-wired across — but **trigger nodes cannot be produced at all**. In the
-chart a trigger names the CI workflow file that invokes a lane
-("deploy.yml"), read from `FastlaneInfo.ciInvocations`, which comes
-from scanning `.github/workflows/*.yml`. Nothing extracts workflow
-files into the graph, so a swap today would silently drop the left
-column of every fastlane pipeline.
-
-That is a missing extractor, not a missing projection: a workflow
-invoking a lane is exactly the kind of literal fact the graph is for,
-and it is the same overgrowth argument that put Makefiles in
-([[visualization-ideas]]). Until it exists, the fastlane chart has to
-keep its own scan.
+- `.github` is walked (the one hidden directory allowed through —
+  CI workflows are build evidence).
+- `BuildExtractor` claims `.github/workflows/*.yml` and emits
+  `core:ciInvocation` observations: the literal command line a
+  workflow runs (`bundle exec fastlane ios beta`).
+- Resolution matches the command's tokens against the lanes the
+  repository's Fastfiles declare and asserts a `core:invokes` edge
+  from the workflow **file** entity to the lane entity — no new
+  entity kind; a workflow file was already a file.
+- The projection draws the trigger column from those edges, with the
+  same ids the file parser used, so the build tracker still matches.
 
 ## Adding a language
 

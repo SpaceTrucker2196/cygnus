@@ -161,8 +161,11 @@ public struct WorkspaceGraphEngine: GraphEngine {
     /// Entity properties a renderer is allowed to see. An allow-list,
     /// not a copy of the bag: the snapshot is a projection, and
     /// widening it silently is how it stops being one.
-    static let projectedProperties = ["core:lastCommit", "core:buildSystem"]
+    static let projectedProperties = ["core:lastCommit", "core:buildSystem",
+                                      "core:buildTargetVerbatim"]
     static let projectedIntProperties = ["core:buildOrder"]
+    /// Flags, projected as "true" when set — absence is the false.
+    static let projectedBoolProperties = ["core:buildPattern", "core:buildPhony"]
     /// Ordered lists, joined with a unit separator. The snapshot's
     /// attribute bag is strings, and a renderer that needs the order
     /// splits it back — cheaper than widening the value type for the
@@ -180,6 +183,11 @@ public struct WorkspaceGraphEngine: GraphEngine {
         for key in projectedIntProperties {
             if case .int(let value)? = resolved.version.properties[key] {
                 result[key] = String(value)
+            }
+        }
+        for key in projectedBoolProperties {
+            if case .bool(true)? = resolved.version.properties[key] {
+                result[key] = "true"
             }
         }
         for key in projectedListProperties {
@@ -208,7 +216,7 @@ public struct WorkspaceGraphEngine: GraphEngine {
 
     static let projectedKinds: [RelationshipKind] = [
         .containsPhysical, .declares, .imports, .references, .refersToSymbol, .builds,
-        .authoredBy, .ownedBy,
+        .invokes, .authoredBy, .ownedBy,
     ]
 
     /// Project one repository's current graph into a render-ready

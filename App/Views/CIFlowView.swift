@@ -5,7 +5,9 @@ import CygnusKit
 // The CI Flow section: a full-pane Metal flowchart of the selected
 // repo's build pipeline — fastlane (trigger → lane → action) when a
 // Fastfile exists, otherwise a Makefile's target graph (goal → target →
-// recipe). Built from the actual files the capability scan parsed.
+// recipe). A projection of the graph's build facts once the repo is
+// analyzed; the capability scan's file parse covers the window before
+// a first snapshot exists.
 //
 // Make flows can be RUN: the Run button starts the build and the flow
 // animates live — each node lights up as its work happens, greens as it
@@ -18,7 +20,7 @@ struct CIFlowView: View {
     @State private var selection: String?
 
     private var state: FactoryState { store.factoryState(for: repoID) }
-    private var flow: CIFlow? { state.caps.ciFlow }
+    private var flow: CIFlow? { store.ciFlow(for: repoID) }
     private var progress: BuildProgress { store.buildProgress(for: repoID) }
 
     var body: some View {

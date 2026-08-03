@@ -28,6 +28,11 @@ public struct LocalFSProvider: Sendable {
     /// File names never captured.
     public static let excludedFiles: Set<String> = [".DS_Store"]
 
+    /// Hidden directories that are evidence anyway. `.github` holds
+    /// the CI workflows that invoke the build — part of the system,
+    /// and invisible until 2026-08-03.
+    public static let allowedHiddenDirectories: Set<String> = [".github"]
+
     /// Files larger than this are recorded in the manifest but their
     /// contents are not ingested (no extractor reads megabyte blobs).
     public static let maxIngestedSize: Int64 = 4 * 1024 * 1024
@@ -48,25 +53,30 @@ public struct LocalFSProvider: Sendable {
         let fm = FileManager.default
         var files: [SnapshotFile] = []
 
+        // Hidden entries are filtered by hand rather than with
+        // .skipsHiddenFiles: that option also hides .github, and the
+        // CI workflows in it are build evidence.
         guard let enumerator = fm.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey],
-            options: [.skipsHiddenFiles])
+            options: [])
         else { return SnapshotManifest(files: []) }
 
         for case let url as URL in enumerator {
             let values = try url.resourceValues(
                 forKeys: [.isRegularFileKey, .isDirectoryKey, .fileSizeKey, .isSymbolicLinkKey])
 
+            let name = url.lastPathComponent
             if values.isDirectory == true {
-                if Self.excludedDirectories.contains(url.lastPathComponent)
-                    || ["xcodeproj", "xcworkspace"].contains(url.pathExtension) {
+                if Self.excludedDirectories.contains(name)
+                    || ["xcodeproj", "xcworkspace"].contains(url.pathExtension)
+                    || (name.hasPrefix(".") && !Self.allowedHiddenDirectories.contains(name)) {
                     enumerator.skipDescendants()
                 }
                 continue
             }
             guard values.isRegularFile == true, values.isSymbolicLink != true,
-                  !Self.excludedFiles.contains(url.lastPathComponent)
+                  !Self.excludedFiles.contains(name), !name.hasPrefix(".")
             else { continue }
 
             let size = Int64(values.fileSize ?? 0)
