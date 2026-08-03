@@ -170,6 +170,82 @@ import Foundation
         #expect(plain(graphLabels) == plain(fileLabels))
     }
 
+    // MARK: - fastlane
+
+    private func indexedFastfile(_ text: String) async throws -> GraphSnapshot {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-lane-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("fastlane"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try text.write(to: root.appendingPathComponent("fastlane/Fastfile"),
+                       atomically: true, encoding: .utf8)
+        let engine = WorkspaceGraphEngine(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("cygnus-lane-ws-\(UUID().uuidString)"))
+        var snapshot: GraphSnapshot?
+        for try await event in engine.analyze(repoAt: root) {
+            if case .finished(let result) = event { snapshot = result }
+        }
+        return try #require(snapshot)
+    }
+
+    private let fastfile = """
+        platform :ios do
+          private_lane :setup do
+            cocoapods
+          end
+
+          lane :beta do
+            setup
+            build_app
+            upload_to_testflight
+          end
+        end
+        """
+
+    /// Lanes project with the chart's own dialect: `lane:` ids, and a
+    /// step naming another lane drawn as a call wired across to it.
+    @Test func lanesProjectWithCallsWiredAcross() async throws {
+        let snapshot = try await indexedFastfile(fastfile)
+        let flow = CIFlow.from(snapshot: snapshot, buildFile: "fastlane/Fastfile")
+        let fromFile = FastlaneFlowBuilder.build(
+            info: FastlaneInfo(lanes: [], appfile: [], ciInvocations: []),
+            fastfileText: fastfile)
+
+        #expect(flow.source == .fastlane)
+        func described(_ f: CIFlow) -> Set<String> {
+            Set(f.nodes.map { "\($0.kind.rawValue) \($0.label)" })
+        }
+        let onlyGraph = described(flow).subtracting(described(fromFile))
+            .sorted().joined(separator: ", ")
+        let onlyFile = described(fromFile).subtracting(described(flow))
+            .sorted().joined(separator: ", ")
+        #expect(described(flow) == described(fromFile),
+                "only in graph: [\(onlyGraph)]  only in file: [\(onlyFile)]")
+        // The call edge is what makes the chart a pipeline rather than
+        // a set of disconnected rows.
+        #expect(flow.edges.contains { $0.to == "lane:setup" })
+    }
+
+    /// The half of the fastlane chart the graph cannot produce.
+    /// Trigger nodes name the CI workflow file that invokes a lane,
+    /// and nothing extracts GitHub workflows into the graph — so a
+    /// swap would silently drop them. Recorded here rather than
+    /// discovered later.
+    @Test func triggersAreMissingBecauseWorkflowsAreNotInTheGraph() async throws {
+        let snapshot = try await indexedFastfile(fastfile)
+        let flow = CIFlow.from(snapshot: snapshot, buildFile: "fastlane/Fastfile")
+        #expect(!flow.nodes.contains { $0.kind == .trigger })
+
+        let withTriggers = FastlaneFlowBuilder.build(
+            info: FastlaneInfo(lanes: [], appfile: [],
+                               ciInvocations: ["deploy.yml: fastlane ios beta"]),
+            fastfileText: fastfile)
+        #expect(withTriggers.nodes.contains { $0.kind == CIFlow.NodeKind.trigger
+                                              && $0.label == "deploy.yml" },
+                "the file parser draws triggers the graph has no evidence for")
+    }
+
     @Test func aSnapshotWithNoBuildTargetsMakesAnEmptyFlow() {
         let flow = CIFlow.from(snapshot: GraphSnapshot(nodes: [], edges: []))
         #expect(flow.isEmpty)

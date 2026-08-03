@@ -46,17 +46,25 @@ extension CIFlow {
         // exists, otherwise whatever came first.
         let defaultGoal = targets.first { $0.label == "all" }?.label ?? targets[0].label
 
+        // The two chart builders id their nodes differently, and the
+        // build tracker matches on these, so the projection has to
+        // speak whichever dialect the source uses.
+        let prefix = source == .fastlane ? "lane:" : "target:"
+
         var nodes: [CIFlow.Node] = []
         var edges: [CIFlow.Edge] = []
         for (row, target) in targets.enumerated() {
-            let targetID = "target:\(target.label)"
+            let targetID = "\(prefix)\(target.label)"
             nodes.append(CIFlow.Node(id: targetID, kind: .lane, label: target.label,
                                      column: 1, row: row))
 
-            if target.label == defaultGoal {
+            // A Makefile has one entry: its default goal. A Fastfile
+            // has one trigger per CI workflow that invokes each lane —
+            // and those workflows are not in the graph, so this cannot
+            // draw them. See docs/wiki/extractors.md.
+            if source == .make, target.label == defaultGoal {
                 let entryID = "goal:\(target.label)"
-                nodes.append(CIFlow.Node(id: entryID, kind: .trigger,
-                                         label: source == .fastlane ? "ci" : "make",
+                nodes.append(CIFlow.Node(id: entryID, kind: .trigger, label: "make",
                                          column: 0, row: row))
                 edges.append(CIFlow.Edge(from: entryID, to: targetID))
             }
@@ -77,11 +85,21 @@ extension CIFlow {
                 // what the file says. The chart wants the program —
                 // deriving it here keeps interpretation in the
                 // projection, where it belongs.
-                let label = program(in: step)
+                // A Makefile step is a command line, so the chart
+                // wants its program. A fastlane step is already an
+                // action name and must not be reduced further.
+                let label = source == .fastlane ? step : program(in: step)
+                // A step naming another lane is a call, drawn as one
+                // and wired across to that lane.
+                let isCall = source == .fastlane && names.contains(label)
+                    && label != target.label
                 let stepID = "\(targetID)#\(index):\(label)"
-                nodes.append(CIFlow.Node(id: stepID, kind: .action, label: label,
-                                         column: 2 + index, row: row))
+                nodes.append(CIFlow.Node(id: stepID, kind: isCall ? .laneCall : .action,
+                                         label: label, column: 2 + index, row: row))
                 edges.append(CIFlow.Edge(from: previous, to: stepID))
+                if isCall {
+                    edges.append(CIFlow.Edge(from: stepID, to: "\(prefix)\(label)"))
+                }
                 previous = stepID
             }
         }

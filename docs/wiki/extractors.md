@@ -117,6 +117,22 @@ leave the chart parsing files forever and accept the duplication. The
 test pins the current disagreement, so whichever is chosen, the
 choice is visible.
 
+### The fastlane half needs new evidence
+
+Lanes project cleanly — `lane:` ids, sub-lane calls drawn as calls and
+wired across — but **trigger nodes cannot be produced at all**. In the
+chart a trigger names the CI workflow file that invokes a lane
+("deploy.yml"), read from `FastlaneInfo.ciInvocations`, which comes
+from scanning `.github/workflows/*.yml`. Nothing extracts workflow
+files into the graph, so a swap today would silently drop the left
+column of every fastlane pipeline.
+
+That is a missing extractor, not a missing projection: a workflow
+invoking a lane is exactly the kind of literal fact the graph is for,
+and it is the same overgrowth argument that put Makefiles in
+([[visualization-ideas]]). Until it exists, the fastlane chart has to
+keep its own scan.
+
 ## Adding a language
 
 For a tree-sitter language: a pinned grammar dependency, a query, and
