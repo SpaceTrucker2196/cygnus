@@ -28,6 +28,24 @@ If Callers or Symbols is empty, the repository has not been built with
 an index yet. Build it, then re-analyze — you do not need to change a
 source file first.
 
+### How much of the repository those views cover
+
+Callers and Symbols are built entirely from compiler-resolved
+references, and an index store only covers the targets that produced
+it. A repository whose app is built by Xcode and whose packages are
+built by SwiftPM has two indexes, and cygnus reads one — so those
+views can draw a confident-looking picture of part of the code.
+
+When coverage is incomplete, a line under the graph says how many
+source files the reference data provably reaches. It is phrased as
+"at least" on purpose: a file with no references in either direction
+might be one the index never saw, or one that genuinely neither uses
+nor is used by anything. Those two are indistinguishable, so the
+number counts only what is provable.
+
+Build every target you care about with an index if you want the views
+to cover everything.
+
 ## Show External Modules
 
 Off by default. System frameworks are never charted, because every

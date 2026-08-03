@@ -509,6 +509,49 @@ public struct GraphScene: Sendable, Equatable {
         Set(owners(from: snapshot).filter { $0.value == "Shared" }.keys)
     }
 
+    // MARK: - Reference coverage
+
+    /// How much of the repository the compiler-resolved reference data
+    /// actually reaches.
+    public struct ReferenceCoverage: Sendable, Equatable {
+        /// Source files with at least one reference edge in either
+        /// direction — the index demonstrably saw them.
+        public let covered: Int
+        /// Source files in the repository, by the same "declares
+        /// something" test the Code scene uses.
+        public let total: Int
+        public var ratio: Double? { total == 0 ? nil : Double(covered) / Double(total) }
+        public var isComplete: Bool { covered == total }
+    }
+
+    /// A **lower bound** on how much of the repository the index store
+    /// covers, and deliberately labelled as one.
+    ///
+    /// A file with no reference edges either way is genuinely
+    /// ambiguous: the index may never have seen it, or it may simply
+    /// neither use nor be used by anything else. Those are
+    /// indistinguishable here — the ambiguity that made dead-code
+    /// detection unshippable — so this counts only what is provable
+    /// and says "at least".
+    ///
+    /// Worth surfacing because the failure is silent otherwise. On
+    /// cygnus the index covers the SwiftPM packages but not the Xcode
+    /// app target, so Callers and Symbols draw a partial picture that
+    /// looks complete. A number next to the view is the difference
+    /// between trusting it and knowing what it omits.
+    public static func referenceCoverage(from snapshot: GraphSnapshot) -> ReferenceCoverage {
+        let sourceFiles = Set(snapshot.edges.lazy
+            .filter { $0.kind == "core:declares" }
+            .map(\.from))
+        var touched = Set<String>()
+        for edge in snapshot.edges where edge.kind == "core:references" {
+            touched.insert(edge.from)
+            touched.insert(edge.to)
+        }
+        return ReferenceCoverage(covered: touched.intersection(sourceFiles).count,
+                                 total: sourceFiles.count)
+    }
+
     // MARK: - Migration front
 
     /// Where a file stands relative to a migration between two

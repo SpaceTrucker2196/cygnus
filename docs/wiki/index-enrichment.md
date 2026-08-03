@@ -68,6 +68,24 @@ it, so ghosts are filtered at the point of use rather than trusted.
 Enrichment also runs on a source no-op, because a build can happen
 between analyses. See [[analysis-pipeline]].
 
+## When it is only partial
+
+Worse than missing, because it is silent. An index store covers the
+targets that produced it, and a repository built two ways — an Xcode
+app plus SwiftPM packages — has two indexes where cygnus reads one.
+Callers and Symbols then draw a confident picture of part of the code.
+
+`GraphScene.referenceCoverage(from:)` reports how many source files
+the reference data provably reaches, and the app shows it under those
+views when it is not everything. It is a **lower bound** by
+construction: a file with no references either way is either one the
+index never saw or one that genuinely connects to nothing, and those
+are indistinguishable. That same ambiguity is why dead-code detection
+was refused — see [[visualization-ideas]].
+
+Measured on cygnus: the SwiftPM packages are covered, the app target
+is not.
+
 ## When it is missing
 
 Nothing fails. The graph degrades to the syntax baseline and the

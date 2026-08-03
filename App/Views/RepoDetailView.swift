@@ -197,6 +197,32 @@ struct DependencyGraphView: View {
             emptyState
         } else {
             FlatGraphView(scene: scene)
+                .overlay(alignment: .bottom) { coverageCaveat }
+        }
+    }
+
+    /// Callers and Symbols are built entirely from compiler-resolved
+    /// references, so a partial index makes them draw a partial
+    /// picture that looks complete. Say so, with the number, rather
+    /// than letting the view imply coverage it does not have.
+    @ViewBuilder private var coverageCaveat: some View {
+        let coverage = GraphScene.referenceCoverage(from: snapshot)
+        if store.graphContent == .callers || store.graphContent == .symbols,
+           !coverage.isComplete, let ratio = coverage.ratio {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.circle")
+                Text("Reference data reaches at least \(coverage.covered) of "
+                     + "\(coverage.total) source files (\(Int(ratio * 100))%). "
+                     + "Targets built outside this index are missing.")
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .padding(10)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("graph.coverageCaveat")
         }
     }
 
