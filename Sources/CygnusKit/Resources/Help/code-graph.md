@@ -87,6 +87,7 @@ stays memorable instead of reshuffling every run.
 - **Naming** — ring nodes whose name claims a role their structure
   contradicts.
 - **History** — compare two revisions and trend a metric across them.
+- **Migration** — name two modules and see which files have moved.
 
 ## Depth, and why it defaults to 1
 
@@ -112,6 +113,31 @@ Longer detours are left out.
 
 "No route" is a real answer, not a failure. Two things you assumed
 were connected turning out not to be is usually worth knowing.
+
+## Tracking a migration
+
+Half-finished migrations are invisible in a dependency graph, because
+both halves look healthy on their own. **Migration** makes the front
+visible: name the module you are moving away from and the one you are
+moving to, and every file that imports either is coloured by where it
+stands.
+
+- **Migrated** — uses the new module only.
+- **Not migrated** — still on the old one.
+- **Straddling** — uses both. This is the remaining work, and it is
+  the number that tells you a migration is genuinely in progress
+  rather than merely begun.
+
+Files importing neither module are left alone rather than coloured, so
+the picture only ever shows what the migration actually touches.
+
+Cygnus does not guess which module replaces which — you name the pair.
+Deciding that two modules "serve the same role" is exactly the kind of
+guess that produces confident nonsense, and it is knowledge you have
+and the graph does not.
+
+When nothing is left on the old module and nothing straddles, the old
+one can go. That is the moment the panel is there to tell you about.
 
 ## Ownership, and the gaps in it
 

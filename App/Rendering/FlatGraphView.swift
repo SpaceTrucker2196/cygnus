@@ -41,6 +41,7 @@ struct FlatGraphView: View {
     @State private var traceTarget: String?
     @State private var showDisagreements = false
     @State private var historyShown = false
+    @State private var migrationShown = false
 
     private struct LayoutInput: Equatable {
         let scene: GraphScene
@@ -80,8 +81,15 @@ struct FlatGraphView: View {
     /// not part of the dependency projection, and the point is to
     /// colour the dependency graph by who owns it.
     private var clusters: [String: String] {
+        let snapshot = store.currentIndex?.snapshot
+        // A named migration takes over the colouring: it asks about
+        // specific files, and answering it while also partitioning
+        // everything by area would say two things with one encoding.
+        if migrationShown, let snapshot, let front = store.migrationFront(in: snapshot) {
+            return front.stand
+        }
         guard grouping == .owner else { return scene.clusters(grouping: grouping) }
-        guard let snapshot = store.currentIndex?.snapshot else { return [:] }
+        guard let snapshot else { return [:] }
         return GraphScene.owners(from: snapshot)
     }
 
@@ -139,12 +147,18 @@ struct FlatGraphView: View {
                             expandFunctions: $expandFunctions, focusDepth: $focusDepth,
                             showDisagreements: $showDisagreements,
                             historyShown: $historyShown,
+                            migrationShown: $migrationShown,
                             cycleCount: cyclicEdges.count,
                             disagreementCount: disagreements.count)
         }
         .overlay(alignment: .topTrailing) {
-            if historyShown, let repo = store.selectedRepo {
-                GraphHistoryView(repoID: repo)
+            VStack(alignment: .trailing, spacing: 0) {
+                if historyShown, let repo = store.selectedRepo {
+                    GraphHistoryView(repoID: repo)
+                }
+                if migrationShown, let snapshot = store.currentIndex?.snapshot {
+                    MigrationFrontView(snapshot: snapshot)
+                }
             }
         }
         .overlay(alignment: .topLeading) {

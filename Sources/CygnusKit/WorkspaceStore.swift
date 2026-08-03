@@ -73,6 +73,19 @@ public final class WorkspaceStore {
     public internal(set) var activeDelta: RevisionDelta?
     public internal(set) var trendPoints: [TrendPoint] = []
     public var trendMetric: GraphMetric = .cycles
+
+    // MARK: Migration state
+    /// The two ends of a migration, named by the user. Nil until
+    /// chosen — cygnus never guesses which module replaces which.
+    public var migrationFrom: String?
+    public var migrationTo: String?
+
+    /// Where the named migration stands, or nil when both ends have
+    /// not been picked.
+    public func migrationFront(in snapshot: GraphSnapshot) -> GraphScene.MigrationFront? {
+        guard let migrationFrom, let migrationTo, migrationFrom != migrationTo else { return nil }
+        return GraphScene.migrationFront(from: migrationFrom, to: migrationTo, in: snapshot)
+    }
     @ObservationIgnored var historyTask: Task<Void, Never>?
 
     public struct RevisionRange: Sendable, Equatable {

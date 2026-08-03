@@ -81,6 +81,9 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       `core:ownedBy`, Owner grouping showing owner / Shared /
       Unowned). Measured on sloth: 236 build edges, 3 people, 484
       files with authorship, 32 shared with no dominant owner.
+      Migration front added *(2026-08-03)*: name two modules, see
+      migrated / straddling / not-migrated counts, with the pair
+      chosen by the user rather than inferred.
       Remaining candidates: departed-author staleness (needs dates in
       the snapshot), and CI Flow as a graph projection so the second
       Make parser can go. **Refused:** forgotten/dead-code detection —

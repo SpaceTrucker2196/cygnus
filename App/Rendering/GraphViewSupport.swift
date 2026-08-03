@@ -151,6 +151,7 @@ struct GraphControlBar: View {
     @Binding var focusDepth: Int?
     @Binding var showDisagreements: Bool
     @Binding var historyShown: Bool
+    @Binding var migrationShown: Bool
     var cycleCount: Int = 0
     var disagreementCount: Int = 0
 
@@ -237,6 +238,12 @@ struct GraphControlBar: View {
             .toggleStyle(.checkbox)
             .help("Compare two revisions and trend a metric across them")
             .accessibilityLabel("History panel")
+            Toggle(isOn: $migrationShown) {
+                Label("Migration", systemImage: "arrow.left.arrow.right")
+            }
+            .toggleStyle(.checkbox)
+            .help("Name a migration between two modules and see which files have moved, which have not, and which use both")
+            .accessibilityLabel("Migration front")
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Graph controls")

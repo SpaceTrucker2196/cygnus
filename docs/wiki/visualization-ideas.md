@@ -6,11 +6,11 @@ updated: 2026-07-31
 
 # Visualization Ideas from *Kill It With Fire*
 
-> **Status (2026-07-31):** ideas 1, 2, 3, 4, 5 and 7 are built — see
-> **S8** in `docs/milestones.md`. Idea 6 (partial-migration front) and
-> idea 8 (unreachable code) are not. The reasoning below is kept as
-> written, because *why* each view exists outlives the fact that it
-> now exists.
+> **Status (2026-08-03):** ideas 1–7 are built — see **S8** in
+> `docs/milestones.md`. Idea 8 was attempted and **refused** on
+> evidence; the numbers are under its heading. The reasoning below is
+> kept as written, because *why* each view exists outlives the fact
+> that it now exists.
 
 Source: Marianne Bellotti, *Kill It With Fire* (No Starch, 2021). Page
 numbers below are the print pages. The book is about modernizing aging
@@ -114,6 +114,11 @@ the other, or both.
 Show the migration front — what has moved, what has not, and which
 files straddle both. The straddlers are the work. This turns a vague
 "we're mid-migration" into a countable set.
+
+**Built**, with one deliberate constraint: the pair of modules is
+named by a person, never inferred. Deciding that two modules serve the
+same role is the same species of guess that sank idea 8, and asking
+costs one picker.
 
 ## 7. Change over revisions, not just the current state
 

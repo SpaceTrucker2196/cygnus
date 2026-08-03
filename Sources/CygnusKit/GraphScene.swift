@@ -477,6 +477,88 @@ public struct GraphScene: Sendable, Equatable {
         Set(owners(from: snapshot).filter { $0.value == "Shared" }.keys)
     }
 
+    // MARK: - Migration front
+
+    /// Where a file stands relative to a migration between two
+    /// modules.
+    public enum MigrationStand: String, Sendable, CaseIterable {
+        /// Uses the new module and not the old one.
+        case migrated = "Migrated"
+        /// Still on the old module only.
+        case remaining = "Not migrated"
+        /// Uses both — the actual work, and the only category that
+        /// tells you the migration is genuinely in progress rather
+        /// than merely started.
+        case straddling = "Straddling"
+    }
+
+    public struct MigrationFront: Sendable, Equatable {
+        public let stand: [String: String]        // node id → MigrationStand raw value
+        public let migrated: Int
+        public let remaining: Int
+        public let straddling: Int
+        public var total: Int { migrated + remaining + straddling }
+        /// Fraction of involved files that have moved. Nil when no
+        /// file uses either module — the pair names nothing.
+        public var progress: Double? {
+            total == 0 ? nil : Double(migrated) / Double(total)
+        }
+    }
+
+    /// Files classified by which of two modules they import.
+    ///
+    /// *Kill It With Fire* lists partial migrations first among the
+    /// causes of technical debt — "subpar trade-offs: partial
+    /// migrations, quick patches, and out-of-date or unnecessary
+    /// dependencies" (p. 39). A half-finished migration is invisible
+    /// in a dependency graph precisely because both halves look
+    /// healthy on their own.
+    ///
+    /// **The pair is named by a person, never guessed.** Deciding that
+    /// two modules "serve the same role" is exactly the kind of
+    /// inference that would produce confident nonsense; asking costs
+    /// one picker and makes every answer here trustworthy.
+    ///
+    /// Files using neither module are absent from the map rather than
+    /// labelled — they are not part of this migration and should not
+    /// be coloured as though they were.
+    public static func migrationFront(from old: String, to new: String,
+                                      in snapshot: GraphSnapshot) -> MigrationFront {
+        var usesOld = Set<String>()
+        var usesNew = Set<String>()
+        for edge in snapshot.edges where edge.kind == "core:imports" {
+            if edge.to == old { usesOld.insert(edge.from) }
+            if edge.to == new { usesNew.insert(edge.from) }
+        }
+        var stand: [String: String] = [:]
+        for id in usesOld.union(usesNew) {
+            let value: MigrationStand = switch (usesOld.contains(id), usesNew.contains(id)) {
+            case (true, true): .straddling
+            case (true, false): .remaining
+            default: .migrated
+            }
+            stand[id] = value.rawValue
+        }
+        func count(_ value: MigrationStand) -> Int {
+            stand.values.filter { $0 == value.rawValue }.count
+        }
+        return MigrationFront(stand: stand,
+                              migrated: count(.migrated),
+                              remaining: count(.remaining),
+                              straddling: count(.straddling))
+    }
+
+    /// Modules a migration could be named between: everything charted
+    /// that something actually imports, sorted for a stable picker.
+    public static func migratableModules(in snapshot: GraphSnapshot) -> [GraphSnapshot.Node] {
+        let imported = Set(snapshot.edges.lazy
+            .filter { $0.kind == "core:imports" }
+            .map(\.to))
+        return snapshot.nodes
+            .filter { $0.kind == "core:module" && imported.contains($0.id) }
+            .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+    }
+
     // MARK: - Naming versus structure
 
     /// A node whose name claims one architectural role while its
