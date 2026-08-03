@@ -158,6 +158,21 @@ public struct WorkspaceGraphEngine: GraphEngine {
             .id
     }
 
+    /// Entity properties a renderer is allowed to see. An allow-list,
+    /// not a copy of the bag: the snapshot is a projection, and
+    /// widening it silently is how it stops being one.
+    static let projectedProperties = ["core:lastCommit"]
+
+    static func projectedAttributes(of resolved: ResolvedEntity) -> [String: String] {
+        var result: [String: String] = [:]
+        for key in projectedProperties {
+            if case .string(let value)? = resolved.version.properties[key] {
+                result[key] = value
+            }
+        }
+        return result
+    }
+
     /// Entity ids belonging to a repository — the filter that keeps
     /// one repo's counts out of another's.
     private static func ownedEntityIDs(store: SQLiteGraphStore,
@@ -209,7 +224,8 @@ public struct WorkspaceGraphEngine: GraphEngine {
                     kind: resolved.entity.kind.rawValue,
                     label: resolved.version.name,
                     path: resolved.version.anchors.first?.path,
-                    line: resolved.version.anchors.first?.range?.startLine)
+                    line: resolved.version.anchors.first?.range?.startLine,
+                    attributes: Self.projectedAttributes(of: resolved))
             }
             .sorted { $0.id < $1.id }
 

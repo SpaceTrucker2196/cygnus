@@ -106,6 +106,29 @@ import CygnusObservation
         #expect(owned.allSatisfy { $0.layer == .inferred })
     }
 
+    /// A person carries when they last committed, which is what makes
+    /// "everyone who worked on this has gone" answerable at all.
+    @Test func peopleCarryTheirLastCommitDate() async throws {
+        let root = try makeRepo()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let workspace = try makeWorkspace()
+        let repo = try await workspace.register(path: root)
+        _ = try await workspace.index(repo)
+        let store = await workspace.store
+
+        let ada = try #require(try store.entity(
+            stableKey: StableKeys.person("ada@example.com"), at: .current))
+        guard case .string(let raw)? = ada.version.properties["core:lastCommit"] else {
+            Issue.record("no last-commit date on the person")
+            return
+        }
+        let date = try #require(ISO8601DateFormatter().date(from: raw))
+        // The fixture commits now, so "last commit" must be recent —
+        // a date that fails to parse or lands in 1970 is the bug this
+        // catches.
+        #expect(Date().timeIntervalSince(date) < 3600)
+    }
+
     /// Ownership facts carry provenance to the authorship
     /// observations, so they are invalidated like everything else.
     @Test func ownershipFactsCarryProvenance() async throws {

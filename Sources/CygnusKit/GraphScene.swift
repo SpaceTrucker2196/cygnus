@@ -450,25 +450,57 @@ public struct GraphScene: Sendable, Equatable {
     ///     own" (p. 98).
     ///   - **Unowned** — in the repository, but nobody has committed
     ///     to it within the history that was read.
-    public static func owners(from snapshot: GraphSnapshot) -> [String: String] {
-        let names = Dictionary(uniqueKeysWithValues: snapshot.nodes
-            .filter { $0.kind == "core:person" }
-            .map { ($0.id, $0.label) })
+    /// How long an author can be silent before their knowledge counts
+    /// as gone. A year is arbitrary but defensible: someone who has
+    /// not touched a repository in that long is not who you ask.
+    public static let departureWindow: TimeInterval = 365 * 24 * 60 * 60
+
+    public static func owners(from snapshot: GraphSnapshot,
+                              asOf now: Date = Date()) -> [String: String] {
+        let people = snapshot.nodes.filter { $0.kind == "core:person" }
+        let names = Dictionary(uniqueKeysWithValues: people.map { ($0.id, $0.label) })
+        // Authors with nothing recent. A person whose last commit is
+        // unknown counts as present: absent evidence is not evidence
+        // of departure.
+        let formatter = ISO8601DateFormatter()
+        let departed = Set(people.filter { person in
+            guard let raw = person.attributes["core:lastCommit"],
+                  let last = formatter.date(from: raw) else { return false }
+            return now.timeIntervalSince(last) > departureWindow
+        }.map(\.id))
+
         var owner: [String: String] = [:]
-        var authored = Set<String>()
+        var authors: [String: Set<String>] = [:]
         for edge in snapshot.edges {
             switch edge.kind {
             case "core:ownedBy": owner[edge.from] = names[edge.to] ?? "Owned"
-            case "core:authoredBy": authored.insert(edge.from)
+            case "core:authoredBy": authors[edge.from, default: []].insert(edge.to)
             default: continue
             }
         }
+
         var result: [String: String] = [:]
         for node in snapshot.nodes where node.kind == "core:file" {
-            result[node.id] = owner[node.id]
-                ?? (authored.contains(node.id) ? "Shared" : "Unowned")
+            let touchedBy = authors[node.id] ?? []
+            if touchedBy.isEmpty {
+                result[node.id] = "Unowned"
+            } else if touchedBy.isSubset(of: departed) {
+                // Everyone who ever worked on this has stopped. The
+                // book's institutional-knowledge loss, and a stronger
+                // finding than either "shared" or a named owner —
+                // so it wins over both.
+                result[node.id] = "Stranded"
+            } else {
+                result[node.id] = owner[node.id] ?? "Shared"
+            }
         }
         return result
+    }
+
+    /// Files every author of which has gone quiet.
+    public static func strandedFiles(from snapshot: GraphSnapshot,
+                                     asOf now: Date = Date()) -> Set<String> {
+        Set(owners(from: snapshot, asOf: now).filter { $0.value == "Stranded" }.keys)
     }
 
     /// Files several people work on with no clear owner — the seam

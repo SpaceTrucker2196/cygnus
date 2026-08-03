@@ -31,13 +31,22 @@ public struct GraphSnapshot: Sendable, Equatable {
         public let label: String
         public let path: String?       // source anchor, when file-backed
         public let line: Int?          // anchor start line (1-based)
+        /// A small, explicitly projected slice of the entity's
+        /// properties — never the whole bag. Renderers ask questions
+        /// the structural fields cannot answer (when did this person
+        /// last commit), and the alternative is overloading a field
+        /// that means something else.
+        public let attributes: [String: String]
+
         public init(id: String, kind: String, label: String,
-                    path: String? = nil, line: Int? = nil) {
+                    path: String? = nil, line: Int? = nil,
+                    attributes: [String: String] = [:]) {
             self.id = id
             self.kind = kind
             self.label = label
             self.path = path
             self.line = line
+            self.attributes = attributes
         }
     }
 

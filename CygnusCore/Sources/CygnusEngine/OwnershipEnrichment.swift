@@ -108,6 +108,16 @@ extension CygnusWorkspace {
             perFileTotal[touch.path, default: 0] += 1
         }
 
+        // When each person last committed anywhere in this repository.
+        // A person who has stopped committing is how institutional
+        // knowledge leaves, so the date belongs on the person, not on
+        // any one file they touched.
+        var lastCommitByPerson: [String: Date] = [:]
+        for touch in touches {
+            lastCommitByPerson[touch.identity] =
+                max(lastCommitByPerson[touch.identity] ?? .distantPast, touch.date)
+        }
+
         var changes = RevisionChanges()
         var assertedPeople = Set<String>()
         var dominant: [String: (identity: String, share: Double, supportedBy: [ObservationID])] = [:]
@@ -116,10 +126,17 @@ extension CygnusWorkspace {
             guard let (path, identity) = pairKeys[key] else { continue }
             let personKey = StableKeys.person(identity)
             if assertedPeople.insert(identity).inserted {
+                var properties: PropertyBag = [
+                    ObservationPayload.authorEmail: .string(identity),
+                ]
+                if let last = lastCommitByPerson[identity] {
+                    properties["core:lastCommit"] =
+                        .string(ISO8601DateFormatter().string(from: last))
+                }
                 changes.entities.append(EntityAssertion(
                     stableKey: personKey, kind: .person, repository: nil,
                     name: tally.name.isEmpty ? identity : tally.name,
-                    properties: [ObservationPayload.authorEmail: .string(identity)],
+                    properties: properties,
                     supportedBy: Array(tally.supportedBy.prefix(1))))
             }
             changes.relationships.append(RelationshipAssertion(

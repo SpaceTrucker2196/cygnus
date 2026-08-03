@@ -50,7 +50,7 @@ follow the grouping.
   (both), **Entry** (depends on much, depended on by little), **Leaf**
   (barely connected).
 - **Owner** — who owns each file, from git history: an author's name,
-  **Shared**, or **Unowned**.
+  **Shared**, **Stranded**, or **Unowned**.
 - **None** — pure force layout.
 
 Running Pattern and Role together is the point: where the naming
@@ -144,15 +144,23 @@ one can go. That is the moment the panel is there to tell you about.
 Cygnus reads your git history during analysis and records who has
 committed to each file. **Owner** grouping colours the graph by that.
 
-Three states, and the last two are the point:
+Four states, and the three that are not a name are the point:
 
 - **An author's name** — one person holds most of that file's
   history. Clear ownership.
 - **Shared** — several people work on it, none of them dominant.
 - **Unowned** — nobody has committed to it in the history that was
   read.
+- **Stranded** — everyone who ever worked on it has stopped
+  committing. The knowledge is gone even though the code is not.
 
-Shared files are worth looking at first. Work that falls between two
+Stranded files rank above shared ones: a file with no living author
+is where institutional memory has already been lost, and it is the
+first thing to document or hand over. An author counts as gone after a
+year of silence; an author with no recorded date counts as present,
+because missing evidence is not evidence of departure.
+
+Shared files are worth looking at next. Work that falls between two
 owners is where nobody feels responsible, and it is where debt and
 unpatched problems collect. A **Shared** region sitting on a boundary
 between two owners' territory is the shape to look for; a shared

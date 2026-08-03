@@ -75,6 +75,14 @@ stopped committing, and boundaries where two owners interleave. The
 last one is the payload — a seam between owners is where debt
 collects.
 
+**Built in full.** Owner grouping reports four states: a named owner,
+**Shared**, **Stranded** (every author has gone quiet for a year), and
+**Unowned**. Stranded wins over the other two — a file with no living
+author is a worse finding than one with several. Dates reach the
+renderer through an explicit allow-list of projected entity
+properties, not by overloading edge weight, which would have made
+weight mean two things.
+
 ## 4. Overgrowth: the auxiliary software layer
 
 "Overgrowth is a particular type of coupling between the software and
