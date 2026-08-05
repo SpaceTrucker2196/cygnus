@@ -96,6 +96,44 @@ Engine (E) is the critical path; shell (S) runs in parallel against
       index coverage does not span the app and package targets;
       reasoning and the numbers in `docs/wiki/visualization-ideas.md`.
 
+- [ ] **S9** — Factory *upgrade* path (M). `FactoryInstaller` installs
+      a factory; nothing maintains one. DF_Template now carries a
+      Track C ("evaluate and update, never replace") for repos that
+      already run a factory, and re-installing is the trigger — the
+      copy is additive, so the one file that returns is
+      `FIRST_RUN.md`, which the previous run deleted. Four gaps
+      measured against `DF_Template` on 2026-08-05:
+
+      - **The installed factory has no wiki and no site.**
+        `installedPaths` omits `wiki/README.md` and
+        `.github/workflows/pages.yml`, so every repo installed from
+        the app is missing the knowledge base and the Pages workflow
+        that AGENTS.md calls non-negotiable ("research lands in the
+        wiki, with sources"). Add both to the path list.
+      - **A top-level `wiki/` is invisible in Docs.**
+        `FactoryDocsProvider.docDirs` scans `docs`, `docs/wiki`,
+        `docs/views`; the template publishes from `wiki/` — that's
+        what `pages.yml` builds. Pick one contract: scan `wiki/` too,
+        or move the template's wiki under `docs/wiki/` and repoint
+        the workflow. Cygnus's own repo uses `docs/wiki/`, so this
+        works here and nowhere else.
+      - **`skipped` conflates "already real" with "still a stub".**
+        An *Update Factory* action should audit each expected
+        component as real / stub / missing / stale — the table in
+        FIRST_RUN.md Track C is the spec — and report gaps instead of
+        silently skipping every existing file. That report is the
+        agent's work list.
+      - **Nothing records which template revision installed**, so
+        nothing can say what has drifted. Stamp the DF_Template
+        commit sha at install time (the install entry in
+        `PROGRESS.md`, or a small `.factory` file) and surface
+        "template is N commits behind" on the repo card.
+
+      Acceptance: installing into a bare repo yields a wiki and a
+      Pages workflow; installing into a live factory reports a gap
+      audit and leaves every existing file byte-identical; the Docs
+      tree shows the wiki wherever the template puts it.
+
 ## Research
 
 - [ ] **R1** — **morpho** (`SpaceTrucker2196/morpho`, MorphoHDL):
