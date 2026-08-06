@@ -16,6 +16,7 @@ import CygnusRetrieval
     /// answers rather than validation errors.
     private static let arguments: [String: [String: JSONValue]] = [
         "cygnus_status": [:],
+        "cygnus_factory_audit": [:],
         "cygnus_prior_decisions": ["topic": .string("storage")],
         "cygnus_repo_map": [:],
         "cygnus_search": ["query": .string("Engine")],

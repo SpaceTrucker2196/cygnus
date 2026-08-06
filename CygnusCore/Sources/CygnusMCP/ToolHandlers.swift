@@ -34,6 +34,7 @@ public struct ToolHandlers: Sendable {
         switch name {
         case "cygnus_status":      return try await status()
         case "cygnus_prior_decisions": return try await decisions(arguments, repo, maxTokens)
+        case "cygnus_factory_audit": return try await factoryAudit(repo, maxTokens)
         case "cygnus_repo_map":    return try await repoMap(arguments, repo, maxTokens)
         case "cygnus_search":      return try await search(arguments, repo, maxTokens)
         case "cygnus_find_definition": return try await definitions(arguments, repo, maxTokens)
@@ -75,6 +76,34 @@ public struct ToolHandlers: Sendable {
         lines.append("")
         lines.append("semantic search: unavailable (not built yet — lexical and structural only)")
         return lines.joined(separator: "\n")
+    }
+
+    /// Factory readiness. Leads with what is missing or unfinished,
+    /// because that is the actionable part; the parts already done need
+    /// only be counted.
+    private func factoryAudit(_ repo: RepositoryID?, _ maxTokens: Int) async throws -> String {
+        let store = contentStore
+        let reports = try await workspace.withStore { graph in
+            try FactoryAudit(store: graph, contentStore: store).audit(repository: repo)
+        }
+        guard !reports.isEmpty else { return "No repositories registered." }
+
+        var budget = TokenBudget(maxTokens: maxTokens)
+        for report in reports {
+            var block = "\(report.repositoryName): "
+                + (report.isOperational ? "factory operational" : "NOT operational")
+                + "  (\(report.real.count) real, \(report.stubs.count) unfilled, "
+                + "\(report.missing.count) missing)"
+            for component in report.stubs {
+                block += "\n    unfilled  \(component.path)"
+                    + (component.marker.map { "  — still contains \"\($0)\"" } ?? "")
+            }
+            for component in report.missing {
+                block += "\n    missing   \(component.path)  — \(component.purpose)"
+            }
+            guard budget.admitCounted(block) else { break }
+        }
+        return budget.finish(total: reports.count)
     }
 
     /// The record of what was already settled. Deliberately verbose

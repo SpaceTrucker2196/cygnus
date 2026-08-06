@@ -643,3 +643,40 @@ scene is `GraphScene.dependencies`. Both are now asserted, so the
 distinction survives someone "fixing" whichever they reach for first.
 
 `make test` exits 0: 173 engine, 190 kit, Xcode unit tests green.
+
+## 2026-08-06 — Factory audit: present is not the same as real
+
+`cygnus_factory_audit` (eleventh MCP tool) answers whether a repository
+is actually running a dark factory and what is missing or unfinished,
+across every registered repository at once. It is a projection over the
+snapshot rather than a filesystem walk, so its answers are consistent
+with everything else cygnus says.
+
+**The distinction that carries it: present vs real.** A repository that
+installed the template and never adapted it has every file and no
+factory — MISSION.md full of `[invariant]`, FACTORY.md still saying
+"rewrite every section below". Counting files scores that as complete,
+which is worse than scoring it absent, because placeholders then read
+as documentation. Stub detection uses literal template strings
+(`{{REPO_NAME}}`, `> FIRST RUN:`, `[non-goal]`), so a stub verdict
+means someone really did leave one in.
+
+Two things the first run got wrong, both caught by pointing it at real
+repositories rather than fixtures:
+
+- **It reported sloth as not running a dark factory.** sloth is the
+  repository the pattern is named after; it keeps its charter under
+  `agents/` and its wiki under `docs/wiki/`. An audit that only knew
+  the template's paths would have taught an agent to "fix" a working
+  factory into the wrong shape. Every component now lists the layouts
+  we accept, and sloth reads as operational with three genuine gaps.
+- **It listed a missing `FIRST_RUN.md` as a gap.** Its absence is the
+  success condition — the adaptation finished. Presence is the finding,
+  and it now blocks "operational" however complete everything else
+  looks.
+
+Portfolio as it stands: cygnus, sloth and henge operational;
+MeowPassword has no factory at all; otter is missing its runbook;
+DF_Template is correctly not operational, being all placeholders.
+
+6 new tests (179 engine, 190 kit). `make test` exits 0.

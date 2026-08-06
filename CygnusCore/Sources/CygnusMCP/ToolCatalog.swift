@@ -62,6 +62,23 @@ public enum ToolCatalog {
             maxTokens: 800),
 
         ToolDefinition(
+            name: "cygnus_factory_audit",
+            description: """
+                Whether a repository is actually running a dark factory, and what \
+                is missing or unfinished. Distinguishes a document that exists from \
+                one that was filled in — a repo that installed the template and \
+                never adapted it has every file and no factory, which counting \
+                files would score as complete. Use when setting a prototype up as a \
+                factory, or before trusting that a repo's conventions are written \
+                down anywhere.
+                """,
+            schema: schema(properties: [
+                "repo": repoArgument,
+                "max_tokens": integer("Response ceiling.", default: 2000, max: 4000),
+            ]),
+            maxTokens: 4000),
+
+        ToolDefinition(
             name: "cygnus_prior_decisions",
             description: """
                 What this factory has already decided — and, more importantly, what \
