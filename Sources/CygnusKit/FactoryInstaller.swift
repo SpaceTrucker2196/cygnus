@@ -31,8 +31,9 @@ public struct FactoryInstaller: Sendable {
     /// the template itself and stays behind; git internals never copy.
     static let installedPaths: [String] = [
         "FIRST_RUN.md", "MISSION.md", "CLAUDE.md", "AGENTS.md",
-        "FACTORY.md", "LEDGER.md", "METRICS.md", "PROGRESS.md",
+        "FACTORY.md", "LEDGER.md", "METRICS.md", "DECISIONS.md", "PROGRESS.md",
         "SECURITY.md", "ROADMAP.md", "Makefile",
+        "wiki/README.md", ".github/workflows/pages.yml",
         "docs/dark-factory.md", "docs/converge.md",
         ".claude/commands/converge.md",
     ]

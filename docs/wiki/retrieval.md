@@ -151,6 +151,31 @@ body doesn't fit still emits its citation — a result you cannot cite is
 not a result. `BudgetComplianceTests` sweeps every tool at several
 budgets, so tool number ten cannot quietly skip the contract.
 
+## The factory's memory
+
+A repository records its code in code and its **rejected** options
+nowhere. A refusal leaves no artifact — no file, no test, no type — so
+nothing in the tree reminds anyone it happened, and the same idea gets
+rebuilt every few months by whoever arrives next.
+
+`DECISIONS.md` is where they go: a pipe-table index parsed by the same
+machinery as `METRICS.md` and `LEDGER.md`, plus one `## <id> — …`
+section per row carrying the reasoning. The id joins them, so the
+record a tool reads and the record a person reads cannot drift apart.
+
+`cygnus_prior_decisions` answers it, and its description tells an agent
+to call it *before* proposing an architectural change or a new
+dependency — the only moment the answer is worth anything. Refusals
+carry their reasoning into the response; adopted decisions usually left
+code behind that will be tripped over anyway.
+
+Parsing is deliberately tolerant. A half-filled record still surfaces,
+because refusing to parse one would hide exactly the entry someone left
+unfinished. The template's example row is recognised and skipped, so a
+newly installed factory does not look like it already decided
+something. An absent file reports *no record*, which is not the same as
+"the question is open".
+
 ## Measured (cygnus, 2026-08-05)
 
 230 files → 223 indexed blobs, 27,671 lines, 577 windows. Re-indexing
