@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "CygnusStore", targets: ["CygnusStore"]),
         .library(name: "CygnusQuery", targets: ["CygnusQuery"]),
         .library(name: "CygnusRetrieval", targets: ["CygnusRetrieval"]),
+        .library(name: "CygnusEmbed", targets: ["CygnusEmbed"]),
         .library(name: "CygnusObservation", targets: ["CygnusObservation"]),
         .library(name: "CygnusProviders", targets: ["CygnusProviders"]),
         .executable(name: "cygnus", targets: ["cygnus"]),
@@ -92,11 +93,16 @@ let package = Package(
         // Query surface: subgraph fetch, projections, search, diff.
         .target(name: "CygnusQuery", dependencies: ["CygnusGraph", "CygnusStore"]),
 
+        // Local embedding. Core ML and Accelerate are system
+        // frameworks, so this adds no package dependency; the model
+        // weights are a runtime artifact, not a build input.
+        .target(name: "CygnusEmbed", dependencies: ["CygnusGraph"]),
+
         // Retrieval: the agent-facing index over the graph. Windows and
         // chunks hold blob hashes and line ranges, never source text —
         // the CAS is the only copy (MISSION §7).
         .target(name: "CygnusRetrieval", dependencies: [
-            "CygnusGraph", "CygnusStore", "CygnusQuery", "CygnusProviders",
+            "CygnusGraph", "CygnusStore", "CygnusQuery", "CygnusProviders", "CygnusEmbed",
         ]),
 
         // Facade the app-side kit and the CLI consume.
@@ -131,6 +137,7 @@ let package = Package(
                     dependencies: ["CygnusRetrieval", "CygnusStore", "CygnusProviders", "CygnusEngine"]),
         .testTarget(name: "MCPTests",
                     dependencies: ["CygnusMCP", "CygnusEngine", "CygnusProviders", "CygnusRetrieval"]),
+        .testTarget(name: "EmbedTests", dependencies: ["CygnusEmbed"]),
         .testTarget(name: "ProviderTests", dependencies: ["CygnusProviders"]),
         .testTarget(name: "ExtractorTSTests", dependencies: ["CygnusExtractorTS"]),
     ]
