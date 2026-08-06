@@ -1,6 +1,7 @@
 import Foundation
 import CygnusGraph
 import CygnusStore
+import CygnusQuery
 import CygnusProviders
 import CygnusObservation
 import CygnusDerive
@@ -395,6 +396,7 @@ public actor CygnusWorkspace {
                     "core:symbolUSR": .string(ref.symbolUSR),
                     "core:symbolName": .string(ref.symbolName),
                     "core:definedIn": .string(ref.toPath),
+                    "core:isCall": .bool(ref.isCall),
                 ],
                 extractor: ExtractorIdentity(name: "indexstore-db", version: "0.1.0"))
         }
@@ -402,7 +404,10 @@ public actor CygnusWorkspace {
 
         // Aggregate per file pair; cap provenance per edge so a hot
         // pair (thousands of references) doesn't explode the table.
-        struct Pair { var count = 0; var supportedBy: [ObservationID] = [] }
+        // `calls` counts the subset the compiler marked as calls, so a
+        // caller graph can be built from calls alone rather than from
+        // every mention of the symbol.
+        struct Pair { var count = 0; var calls = 0; var supportedBy: [ObservationID] = [] }
         var pairs: [String: Pair] = [:]
         var pairKeys: [String: (from: String, to: String)] = [:]
         for (index, ref) in references.enumerated() {
@@ -418,7 +423,7 @@ public actor CygnusWorkspace {
         // innermost enclosing declaration (the caller/callee), and
         // aggregate decl→decl pairs. The file→file edge is the coarse
         // chart; this is the wiring the inspector walks.
-        let locator = try declarationLocator(repoID: repoID)
+        let locator = try DeclarationLocator.build(store: store, repository: repoID)
         var symbolPairs: [String: Pair] = [:]
         var symbolPairKeys: [String: (from: StableKey, to: StableKey)] = [:]
         for (index, ref) in references.enumerated() {
@@ -429,6 +434,7 @@ public actor CygnusWorkspace {
             let key = "\(from.raw)→\(to.raw)"
             var pair = symbolPairs[key] ?? Pair()
             pair.count += 1
+            if ref.isCall { pair.calls += 1 }
             if pair.supportedBy.count < 200 { pair.supportedBy.append(ids[index]) }
             symbolPairs[key] = pair
             symbolPairKeys[key] = (from, to)
@@ -451,9 +457,12 @@ public actor CygnusWorkspace {
             guard let (from, to) = symbolPairKeys[key] else { continue }
             changes.relationships.append(RelationshipAssertion(
                 source: from, target: to, kind: .refersToSymbol, layer: .derived,
-                properties: ["core:referenceCount": .int(Int64(pair.count))],
+                properties: [
+                    "core:referenceCount": .int(Int64(pair.count)),
+                    "core:callCount": .int(Int64(pair.calls)),
+                ],
                 supportedBy: pair.supportedBy))
-            assertedSymbols.insert("\(key)#\(pair.count)")
+            assertedSymbols.insert("\(key)#\(pair.count)/\(pair.calls)")
         }
 
         // Retract stale reference edges (identity includes the count,
@@ -492,7 +501,16 @@ public actor CygnusWorkspace {
             let count: Int64? = if case .int(let value)? = edge.properties["core:referenceCount"] {
                 value
             } else { nil }
-            let identity = "\(source.stableKey.raw)→\(target.stableKey.raw)#\(count.map(String.init) ?? "?")"
+            // The call count participates in edge identity: an edge whose
+            // reference count is unchanged but whose call count moved is a
+            // different fact and must be retracted and re-asserted. Edges
+            // written before callCount existed carry no value and read as
+            // "?", so the first enrichment after this change retracts and
+            // re-asserts every symbol edge exactly once — deliberate.
+            let calls: Int64? = if case .int(let value)? = edge.properties["core:callCount"] {
+                value
+            } else { nil }
+            let identity = "\(source.stableKey.raw)→\(target.stableKey.raw)#\(count.map(String.init) ?? "?")/\(calls.map(String.init) ?? "?")"
             currentSymbol.insert(identity)
             if !assertedSymbols.contains(identity) {
                 changes.retractRelationships.append(edge.id)
@@ -509,38 +527,6 @@ public actor CygnusWorkspace {
         return try store.commit(
             changes,
             note: "enrich: \(pairs.count) file + \(symbolPairs.count) symbol reference edges")
-    }
-
-    /// Maps a (path, line) to the innermost declaration entity there —
-    /// the enclosing symbol. Built once per enrichment from the
-    /// committed declaration entities and their source ranges.
-    struct DeclarationLocator {
-        struct Span { let start: Int; let end: Int; let key: StableKey }
-        let byPath: [String: [Span]]
-
-        func enclosing(path: String, line: Int) -> StableKey? {
-            guard let spans = byPath[path] else { return nil }
-            // Smallest span containing the line wins (innermost decl).
-            return spans
-                .filter { $0.start <= line && line <= $0.end }
-                .min { ($0.end - $0.start) < ($1.end - $1.start) }?
-                .key
-        }
-    }
-
-    private func declarationLocator(repoID: RepositoryID) throws -> DeclarationLocator {
-        let declKinds: [EntityKind] = [.type, .interface, .enumeration, .function, .variable]
-        var byPath: [String: [DeclarationLocator.Span]] = [:]
-        for kind in declKinds {
-            for resolved in try store.entities(kind: kind, at: .current)
-            where resolved.entity.repository == repoID {
-                guard let anchor = resolved.version.anchors.first,
-                      let range = anchor.range else { continue }
-                byPath[anchor.path, default: []].append(DeclarationLocator.Span(
-                    start: range.startLine, end: range.endLine, key: resolved.entity.stableKey))
-            }
-        }
-        return DeclarationLocator(byPath: byPath)
     }
 
     /// Strip a file stable key back to its repo-relative path.

@@ -270,3 +270,64 @@
   only when dictionary order cooperated (now a bounded deterministic
   fixpoint); step labels converge on expansion in both constructions
   (`sloth_test`, and unresolved `$(MAKE)` reads `MAKE`).
+
+## 2026-08-05 — Phase 0 for the retrieval layer
+
+Groundwork for a tiered retrieval surface (E7, planned): expose what
+the graph already knows as agent tools. Three prerequisite defects,
+each independently shippable.
+
+- **`DeclarationLocator` lifted** out of `CygnusEngine/Workspace.swift`
+  into `CygnusQuery`, public, with a `build(store:repository:at:)`
+  factory. Reference enrichment used it to attribute a compiler
+  occurrence to its enclosing symbol; retrieval needs the same map to
+  attribute a search hit to a graph entity, which is what lets a
+  result carry a stable key and a provenance chain instead of a bare
+  file offset. No behaviour change.
+- **N+1 removed from `Projections.neighborhood`.** It resolved one
+  entity per discovered node *inside* the BFS edge loop; against the
+  serialized `DatabaseQueue` a depth-2 walk off a hub symbol issued
+  hundreds of blocking queries. Each level now resolves its endpoints
+  in one `entities(ids:)` call, sorted by stable key so downstream
+  truncation is deterministic.
+- **`refersToSymbol` no longer conflates references with calls.**
+  `IndexStoreReader` queried `roles: [.reference, .call]` and dropped
+  the distinction, though `Occurrence` already computed `isCall`.
+  `FileReference` now carries it, enrichment aggregates
+  `core:callCount` beside `core:referenceCount`, and the retract
+  identity string became `#count/calls`.
+
+  Measured on cygnus itself: **1,547 symbol edges, of which 1,436
+  (93%) have zero calls** — 2,360 cross-file reference occurrences
+  against 141 calls. A `callers_of` built on the collapsed data would
+  have been wrong the overwhelming majority of the time, which is the
+  "faking semantic understanding" MISSION invariant 9 forbids. Edges
+  written before this change carry no call count and read as `?`, so
+  the first enrichment after it retracts and re-asserts every symbol
+  edge exactly once — deliberate, and bounded by including the count
+  in the identity string.
+
+New `QueryTests` target (11 tests) — `CygnusQuery` had no test target
+at all, which is how the N+1 survived.
+
+**`make test` is red, and it was red before this work.**
+`CygnusUITests.testLoadRepoBrowseAllViewModes` fails; verified by
+stashing every change and reproducing at HEAD. The full AX tree under
+XCUITest is `Application → MenuBar + TouchBar` with no window, so the
+"seeded repo row missing" message is misleading — the window is
+missing, not the row. Launched through LaunchServices with
+`--uitest-seed-repo` the app creates a window and seeds correctly
+(`engine/graph.sqlite` + CAS + `workspace.json` written). No crash
+reports, no second instance, no stale saved state. This is the same
+session degradation recorded on 2026-07-24 ("XCUITest in this login
+session sees an empty AX tree"), whose recorded remedy is to re-run
+`make test` after a reboot. Engine and kit suites are green (95 tests),
+`cygnus verify` clean, build warning-clean.
+
+Follow-ups not done here: `SQLiteGraphStore.entities(ids:)` builds an
+unbounded `IN (?,…)` list (throws past SQLite's 32,766-variable cap —
+loud, not silent; `containsTrees` already passes every entity, so the
+exposure predates this), `core:isCall`/`core:callCount` want constants
+in `PayloadKeys.swift`, and no test yet asserts `core:callCount`
+reaches the edge or that the identity change churns each edge exactly
+once and then stabilises.

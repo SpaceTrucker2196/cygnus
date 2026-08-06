@@ -72,6 +72,12 @@ public actor IndexStoreReader {
         public let line: Int
         public let column: Int
         public let defLine: Int
+        /// The compiler marked this occurrence a **call**, not merely a
+        /// mention. Keeping the two apart is what lets a caller graph
+        /// honestly claim to be one: "X references Y" and "X calls Y"
+        /// are different facts, and collapsing them makes the stronger
+        /// claim on the weaker evidence.
+        public let isCall: Bool
     }
 
     /// Symbol-name sweep bound — a runaway store must not turn
@@ -110,7 +116,8 @@ public actor IndexStoreReader {
                         symbolUSR: usr, symbolName: canonical.symbol.name,
                         line: occurrence.location.line,
                         column: occurrence.location.utf8Column,
-                        defLine: defLine))
+                        defLine: defLine,
+                        isCall: occurrence.roles.contains(.call)))
                 }
             }
         }

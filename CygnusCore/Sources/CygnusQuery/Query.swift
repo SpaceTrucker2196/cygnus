@@ -86,7 +86,12 @@ public enum Projections {
         var edges: [Int64: Relationship] = [:]
 
         for _ in 0..<max(depth, 0) {
-            var next: [ResolvedEntity] = []
+            // Collect the whole level's edges first, then resolve every
+            // newly discovered endpoint in ONE query. Resolving inside
+            // the edge loop issued one round trip per node, which the
+            // serialized DatabaseQueue turns into hundreds of blocking
+            // queries for a depth-2 walk off a hub symbol.
+            var discovered = Set<EntityID>()
             for entity in frontier {
                 let outgoing = try store.relationships(
                     from: entity.entity.stableKey, kind: nil, at: query)
@@ -96,15 +101,18 @@ public enum Projections {
                 where kinds == nil || kinds!.contains(edge.kind) {
                     edges[edge.id] = edge
                     for id in [edge.source, edge.target] where seen[id] == nil {
-                        if let resolved = try store.entities(ids: [id], at: query).first {
-                            seen[id] = resolved
-                            next.append(resolved)
-                        }
+                        discovered.insert(id)
                     }
                 }
             }
+            if discovered.isEmpty { break }
+
+            // Sorted so the traversal order — and therefore any
+            // downstream truncation — is deterministic.
+            let next = try store.entities(ids: Array(discovered), at: query)
+                .sorted { $0.entity.stableKey.raw < $1.entity.stableKey.raw }
+            for resolved in next { seen[resolved.entity.id] = resolved }
             frontier = next
-            if frontier.isEmpty { break }
         }
 
         return Subgraph(
