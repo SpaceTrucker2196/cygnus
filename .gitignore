@@ -11,3 +11,8 @@ App/Info.plist
 # Owner billing ledger — kept local, never published (see AGENTS.md)
 LEDGER.md
 *.profraw
+
+# Converted embedding weights — a third-party runtime artifact, never committed.
+models/
+*.mlmodelc/
+*.mlpackage/

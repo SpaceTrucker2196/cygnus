@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Convert a HuggingFace sentence encoder to Core ML for cygnus.
+
+This is the one Python file in a repository of Swift tools, and it is
+here because coremltools is Python-only. It is a **developer script**:
+it never runs during a build, never runs in `make test`, and nothing in
+the package depends on it. Run it once, keep the output, forget it.
+
+    pip install 'coremltools>=8.0' 'transformers>=4.40' torch
+    python3 tools/convert-embedder.py \
+        --model jinaai/jina-embeddings-v2-base-code \
+        --out ~/Library/Application\\ Support/Cygnus/workspaces/default/models/jina-code
+
+Then either leave it in the workspace's `models/` directory, where
+cygnus finds it automatically, or point `CYGNUS_EMBED_MODEL` at it.
+
+Why a code-specific model by default: general-purpose text embedders
+collapse on repository-level retrieval — the published gap is several
+times the score of code-tuned models — so defaulting to a general model
+would reproduce the "code embeds badly" folk wisdom by construction.
+The seam takes any encoder; the default should be one trained on code.
+
+The output directory is what `CoreMLEmbedder` expects:
+
+    model.mlmodelc/     compiled Core ML model
+    vocab.txt           the tokenizer vocabulary, unchanged
+    descriptor.json     dimension, window, prefixes, artifact hash
+"""
+
+import argparse
+import hashlib
+import json
+import pathlib
+import shutil
+import subprocess
+import sys
+
+DEFAULT_MODEL = "jinaai/jina-embeddings-v2-base-code"
+
+
+def die(message):
+    print(f"convert-embedder: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", default=DEFAULT_MODEL,
+                        help=f"HuggingFace model id (default: {DEFAULT_MODEL})")
+    parser.add_argument("--out", required=True, help="output directory")
+    parser.add_argument("--max-tokens", type=int, default=256,
+                        help="input width; chunks are ~120 lines, 256 is ample")
+    parser.add_argument("--query-prefix", default="",
+                        help="prepended to queries (e5 wants 'query: ')")
+    parser.add_argument("--document-prefix", default="",
+                        help="prepended to documents (e5 wants 'passage: ')")
+    arguments = parser.parse_args()
+
+    try:
+        import torch
+        import coremltools as ct
+        from transformers import AutoModel, AutoTokenizer
+    except ImportError as error:
+        die(f"missing dependency ({error}). "
+            "pip install 'coremltools>=8.0' 'transformers>=4.40' torch")
+
+    out = pathlib.Path(arguments.out).expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+
+    print(f"loading {arguments.model} …")
+    tokenizer = AutoTokenizer.from_pretrained(arguments.model)
+    model = AutoModel.from_pretrained(arguments.model, torchscript=True).eval()
+
+    width = arguments.max_tokens
+    example = (torch.ones(1, width, dtype=torch.int32),
+               torch.ones(1, width, dtype=torch.int32))
+
+    print("tracing …")
+    traced = torch.jit.trace(model, example, strict=False)
+
+    print("converting to Core ML …")
+    # Enumerated shapes rather than one fixed width: most declaration
+    # chunks are far under the maximum, and bucketing them is close to a
+    # 2x throughput win over always padding to full length.
+    buckets = sorted({64, 128, width})
+    shape = ct.EnumeratedShapes(shapes=[[1, n] for n in buckets], default=[1, width])
+    converted = ct.convert(
+        traced,
+        inputs=[
+            ct.TensorType(name="input_ids", shape=shape, dtype="int32"),
+            ct.TensorType(name="attention_mask", shape=shape, dtype="int32"),
+        ],
+        minimum_deployment_target=ct.target.macOS15,
+        compute_precision=ct.precision.FLOAT16,
+    )
+
+    package = out / "model.mlpackage"
+    if package.exists():
+        shutil.rmtree(package)
+    converted.save(str(package))
+
+    print("compiling …")
+    compiled = out / "model.mlmodelc"
+    if compiled.exists():
+        shutil.rmtree(compiled)
+    # xcrun coremlcompiler produces the .mlmodelc CoreMLEmbedder loads.
+    subprocess.run(["xcrun", "coremlcompiler", "compile", str(package), str(out)],
+                   check=True)
+
+    # The tokenizer vocabulary, verbatim: WordPiece.swift must agree
+    # with it exactly or embeddings are subtly wrong rather than broken.
+    vocabulary = out / "vocab.txt"
+    saved = tokenizer.save_vocabulary(str(out))
+    if saved and pathlib.Path(saved[0]) != vocabulary:
+        shutil.copy(saved[0], vocabulary)
+    if not vocabulary.exists():
+        die("the tokenizer did not emit a vocab.txt — is it WordPiece-based?")
+
+    digest = hashlib.sha256()
+    for path in sorted(compiled.rglob("*")):
+        if path.is_file():
+            digest.update(path.read_bytes())
+    sha = digest.hexdigest()
+
+    descriptor = {
+        "name": arguments.model.split("/")[-1],
+        "dimension": int(model.config.hidden_size),
+        "maxTokens": width,
+        "queryPrefix": arguments.query_prefix,
+        "documentPrefix": arguments.document_prefix,
+        "sha256": sha,
+        "converter": f"coremltools {ct.__version__}, torch {torch.__version__}",
+    }
+    (out / "descriptor.json").write_text(json.dumps(descriptor, indent=2) + "\n")
+
+    print(f"\nwrote {out}")
+    print(f"  model  {descriptor['name']} ({descriptor['dimension']}d, {width} tokens)")
+    print(f"  id     {descriptor['name']}@{sha[:8]}")
+    print("\nRecord this in MISSION.md §5 (licence, source, sha256) and "
+          "PROGRESS.md before relying on it — the weights are a "
+          "third-party artifact even though they are not a code dependency.")
+
+
+if __name__ == "__main__":
+    main()
