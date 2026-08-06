@@ -128,7 +128,7 @@ let package = Package(
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
         .testTarget(name: "QueryTests", dependencies: ["CygnusQuery", "CygnusStore", "CygnusGraph"]),
         .testTarget(name: "RetrievalTests",
-                    dependencies: ["CygnusRetrieval", "CygnusStore", "CygnusProviders"]),
+                    dependencies: ["CygnusRetrieval", "CygnusStore", "CygnusProviders", "CygnusEngine"]),
         .testTarget(name: "MCPTests",
                     dependencies: ["CygnusMCP", "CygnusEngine", "CygnusProviders", "CygnusRetrieval"]),
         .testTarget(name: "ProviderTests", dependencies: ["CygnusProviders"]),

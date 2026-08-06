@@ -21,6 +21,7 @@ it happened.
 | D7 | 2026-08-06 | Hand-rolled MCP protocol rather than the official Swift SDK | adopted | CygnusMCP/JSONRPC.swift | — |
 | D8 | 2026-08-06 | Separate cygnus-mcp executable, not a `cygnus mcp` subcommand | adopted | stdout is the protocol | — |
 | D9 | 2026-08-06 | XCUITest UI tests replaced by headless CygnusKit coverage | adopted | measured: app presents 0 windows under XCUITest | — |
+| D10 | 2026-08-06 | sloth is the reference instance; the audit is validated against it | adopted | CygnusCore/Tests/RetrievalTests/SlothPatternTests.swift | — |
 
 ## D1 — dead-code detection, refused
 
@@ -83,6 +84,24 @@ than left implicit.
 **What would change this.** A macOS or Xcode release where a SwiftUI
 app launched by XCUITest presents its window — retest with a throwaway
 target before reinstating.
+
+## D10 — sloth is the pattern's ground truth, adopted
+
+**Decision.** sloth is the first dark factory and the reference
+instance of the pattern. When `FactoryAudit` and sloth disagree, **the
+audit is wrong**. `SlothPatternTests` pins that, gated behind
+`CYGNUS_E2E_SLOTH=1` so the default suite stays hermetic.
+
+**Why it needs saying.** The first version of the audit reported sloth
+as not running a dark factory, because sloth keeps its charter under
+`agents/` and the audit only knew the template's layout. An agent
+trusting that verdict would have "fixed" the reference implementation
+into the wrong shape — which is a worse outcome than the audit simply
+not existing.
+
+**What would change this.** sloth ceasing to be maintained as the
+reference, or the pattern acquiring a spec independent of any
+instance.
 
 ## D7 — hand-rolled MCP, adopted
 
