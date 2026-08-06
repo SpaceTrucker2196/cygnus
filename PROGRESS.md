@@ -525,3 +525,36 @@ index, which is the foundation the "don't re-litigate what we settled"
 work will build on.
 
 15 new tests (166 engine, 184 kit).
+
+## 2026-08-06 — Testable: installed, indexed, wired
+
+Tooling so the MCP surface can actually be used rather than only
+demonstrated.
+
+- `make install-mcp` — release builds of `cygnus-mcp` and `cygnus` into
+  `~/.local/bin` (no sudo; override `PREFIX`). The bin directory is
+  triple-qualified, so the target asks SwiftPM via `--show-bin-path`
+  rather than guessing `.build/release`, which does not exist.
+- `make index-factory` — registers and indexes `FACTORY_REPOS` into the
+  **default** workspace, which is the one `cygnus-mcp` reads with no
+  environment set, so the two can never disagree about what is indexed.
+- `.mcp.json` at the repo root names `cygnus-mcp` on PATH rather than a
+  build path — an absolute `.build/…` path breaks on the next `make
+  clean`. One of the few files that must live at the root.
+- `FACTORY.md` gained the MCP runbook and the retrieval subcommands,
+  including a client-free smoke test.
+
+Live against six indexed repositories (cygnus, sloth, otter, henge,
+MeowPassword, DF_Template — 3,791 files):
+
+- `cygnus_status` reports per repository, and is honest about the two
+  that were never built: sloth and DF_Template come back "syntactic
+  only (repository not built)" rather than pretending to compiler
+  evidence.
+- `cygnus_search "dark factory"` returns hits from sloth's
+  `agents/dark-factory.md`, henge's README and DF_Template's README —
+  cross-repository, cited, ranked. The factory's own records are
+  already retrievable, which is the ground the "don't re-litigate what
+  we settled" work stands on.
+- `cygnus_find_definition RepoMap` distinguishes the type, the handler
+  function and the test suite, each with its own span.

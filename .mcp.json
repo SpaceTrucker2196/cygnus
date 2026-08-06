@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "cygnus": {
+      "command": "cygnus-mcp",
+      "args": [],
+      "env": {}
+    }
+  }
+}
