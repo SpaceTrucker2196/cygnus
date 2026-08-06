@@ -59,5 +59,43 @@ enum RetrievalSchema {
                     ON snapshot_files(blob_hash);
                 """)
         }
+
+        migrator.registerMigration("v4-semantic") { db in
+            try db.execute(sql: """
+                -- A chunk is a pointer, not a copy: blob hash, line
+                -- range, and the generated prefix. The text lives in
+                -- the CAS and nowhere else.
+                --
+                -- No revision column, deliberately. Keyed by (blob,
+                -- ordinal), a chunk is a pure function of content, so
+                -- unchanged files never re-chunk and never re-embed.
+                CREATE TABLE retrieval_chunk (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    blob_hash TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL,
+                    start_line INTEGER NOT NULL,
+                    end_line INTEGER NOT NULL,
+                    decl_key TEXT,
+                    decl_name TEXT,
+                    context TEXT NOT NULL,
+                    UNIQUE(blob_hash, ordinal)
+                );
+                CREATE INDEX idx_chunk_blob ON retrieval_chunk(blob_hash);
+
+                -- Vectors are Float32 little-endian, pre-L2-normalized
+                -- so cosine collapses to a dot product. `model` is part
+                -- of the key because vectors from different models are
+                -- not comparable — a model change makes queries return
+                -- nothing rather than silently mixing embedding spaces.
+                CREATE TABLE retrieval_vector (
+                    chunk_id INTEGER NOT NULL REFERENCES retrieval_chunk(id),
+                    model TEXT NOT NULL,
+                    dim INTEGER NOT NULL,
+                    vector BLOB NOT NULL,
+                    PRIMARY KEY (chunk_id, model)
+                ) WITHOUT ROWID;
+                CREATE INDEX idx_vector_model ON retrieval_vector(model);
+                """)
+        }
     }
 }
