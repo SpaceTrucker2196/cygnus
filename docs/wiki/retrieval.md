@@ -113,6 +113,44 @@ comes back at query time: the window is re-read from the CAS, the line
 that actually matched is located, and *that* is what gets cited, with
 two lines of context either side.
 
+## The MCP surface
+
+`cygnus-mcp` speaks JSON-RPC 2.0 over **newline-delimited** stdio —
+one object per line, *not* LSP's `Content-Length` framing, which is the
+most common way to write a server that never completes a handshake.
+stdout is the protocol; every diagnostic goes to stderr. That is also
+why it is a separate executable rather than a `cygnus mcp` subcommand:
+the CLI prints progress to stdout, and one stray `print` corrupts the
+stream for the rest of the session.
+
+Wire it up in `.mcp.json`:
+
+```json
+{ "mcpServers": { "cygnus": {
+    "command": "/path/to/cygnus-mcp",
+    "env": { "CYGNUS_WORKSPACE": "/path/to/workspace" } } } }
+```
+
+Nine tools: `status`, `repo_map`, `search`, `find_definition`,
+`find_references`, `callers_of`, `blast_radius`, `list_symbols`,
+`read_span`. The handshake advertises `tools` and nothing else —
+advertising a capability that isn't implemented is how clients end up
+calling methods that return `-32601`.
+
+**Tool descriptions are product surface.** An agent already has grep,
+glob and read; if a description doesn't say precisely when cygnus wins
+— cross-repository, compiler-resolved, centrality-ranked,
+snapshot-consistent — the tool never gets called and the work is
+wasted. They are routing instructions written to a capable peer, and a
+test fails if one is too thin to route on.
+
+**Every response is budgeted, and truncation always announces itself.**
+Budgets are emitted into rather than cut afterwards, ceilings are
+clamped server-side so a client cannot raise them, and a result whose
+body doesn't fit still emits its citation — a result you cannot cite is
+not a result. `BudgetComplianceTests` sweeps every tool at several
+budgets, so tool number ten cannot quietly skip the contract.
+
 ## Measured (cygnus, 2026-08-05)
 
 230 files → 223 indexed blobs, 27,671 lines, 577 windows. Re-indexing

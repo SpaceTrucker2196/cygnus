@@ -475,3 +475,53 @@ SourceWindows`) restarts the walk on the focus symbol's file and pulls
 than "what matters here".
 
 `cygnus map [repo] [focus…]` added. 12 new tests (151 engine, 184 kit).
+
+## 2026-08-06 — Phase 5: the MCP surface (the ship point)
+
+Everything built so far was CLI-only, which means no agent could call
+any of it. `cygnus-mcp` closes that: JSON-RPC 2.0 over
+newline-delimited stdio, nine tools, **zero new dependencies** —
+`Package.swift`'s `dependencies:` array is still byte-identical to
+where it started.
+
+- **Hand-rolled protocol, deliberately.** An official Swift MCP SDK
+  exists; it pulls swift-log, swift-system and swift-collections. The
+  surface actually needed is initialize / initialized / tools/list /
+  tools/call / ping — about 300 lines. In a package that pins
+  tree-sitter grammars by exact revision because of ABI churn, three
+  transitive dependencies to avoid 300 lines is the wrong trade. The
+  reasoning is recorded in `JSONRPC.swift` so it is auditable rather
+  than accidental.
+- **Newline-delimited JSON, not `Content-Length` framing** — the
+  single most common way to ship a server that never completes a
+  handshake.
+- **Its own executable, not a `cygnus mcp` subcommand.** stdout is the
+  protocol and the CLI prints progress to stdout unconditionally; one
+  stray `print` corrupts the stream permanently. Separate binaries make
+  that mistake impossible rather than merely discouraged.
+- **`cygnus_status` is not garnish.** Without it an agent silently
+  reasons over a degraded corpus — an unbuilt repository, a stale
+  index — with no way to discover it.
+- Stdio + local index means **no socket, no network entitlement**. The
+  MISSION invariant holds unamended.
+
+`BudgetComplianceTests` is the contract: it sweeps every tool at
+several budgets and asserts none overruns, none can have its ceiling
+raised by a client, none returns nothing, and none has a description
+too thin to route on. Individual handlers are easy to get right and
+easy to regress the day someone adds tool number ten.
+
+Verified against the real binary over a pipe, not just in tests:
+`initialize` → `notifications/initialized` → `tools/call`. Live
+answers: `cygnus_status` reports "238 files, 2752 declarations,
+references: compiler"; `cygnus_callers_of DeclarationLocator` returns
+"Nothing calls DeclarationLocator. (Compiler-resolved, so this is a
+real answer, not missing data.)"; `cygnus_search "throwing task group"`
+finds `withThrowingTaskGroup` through the split column.
+
+Worth noting for what comes next: that search also returned
+`docs/wiki/retrieval.md`. The factory's own records are already in the
+index, which is the foundation the "don't re-litigate what we settled"
+work will build on.
+
+15 new tests (166 engine, 184 kit).

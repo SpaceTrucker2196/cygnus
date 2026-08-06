@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "CygnusObservation", targets: ["CygnusObservation"]),
         .library(name: "CygnusProviders", targets: ["CygnusProviders"]),
         .executable(name: "cygnus", targets: ["cygnus"]),
+        .executable(name: "cygnus-mcp", targets: ["cygnus-mcp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -106,7 +107,16 @@ let package = Package(
             "CygnusRetrieval",
         ]),
 
-        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusGraph"]),
+        // The agent-facing surface: JSON-RPC over stdio, no network,
+        // no dependencies. Ships as its own executable so the CLI's
+        // stdout progress can never corrupt the protocol stream.
+        .target(name: "CygnusMCP", dependencies: [
+            "CygnusGraph", "CygnusStore", "CygnusQuery", "CygnusRetrieval",
+            "CygnusProviders", "CygnusEngine",
+        ]),
+
+        .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusRetrieval", "CygnusGraph", "CygnusProviders"]),
+        .executableTarget(name: "cygnus-mcp", dependencies: ["CygnusMCP", "CygnusEngine", "CygnusProviders"]),
 
         .testTarget(name: "GraphTests", dependencies: ["CygnusGraph"]),
         .testTarget(name: "DeriveTests", dependencies: ["CygnusDerive", "CygnusStore"]),
@@ -119,6 +129,8 @@ let package = Package(
         .testTarget(name: "QueryTests", dependencies: ["CygnusQuery", "CygnusStore", "CygnusGraph"]),
         .testTarget(name: "RetrievalTests",
                     dependencies: ["CygnusRetrieval", "CygnusStore", "CygnusProviders"]),
+        .testTarget(name: "MCPTests",
+                    dependencies: ["CygnusMCP", "CygnusEngine", "CygnusProviders", "CygnusRetrieval"]),
         .testTarget(name: "ProviderTests", dependencies: ["CygnusProviders"]),
         .testTarget(name: "ExtractorTSTests", dependencies: ["CygnusExtractorTS"]),
     ]
