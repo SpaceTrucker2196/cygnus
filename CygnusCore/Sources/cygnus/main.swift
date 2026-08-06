@@ -22,6 +22,11 @@ commands:
   query contains     print the containment tree
   query deps         print the import graph
   search <text> [n]  BM25 search over indexed source (default 10 hits)
+  def <symbol>       where a symbol is defined
+  refs <symbol>      what refers to it (compiler-resolved when built)
+  callers <symbol>   what calls it — calls only, not every mention
+  radius <symbol>    blast radius, ranked by centrality
+  span <path> <a> <b>  read lines a..b from the snapshot, not the tree
   revisions          list graph revisions
   diff <r1> <r2>     what changed between two revisions
   verify             full rebuild vs incremental graph, per repository
@@ -71,6 +76,87 @@ case "search":
             print("    \(line)")
         }
     }
+
+case "def":
+    guard arguments.count >= 2 else { print(usage); exit(2) }
+    let defWorkspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let defs = try await defWorkspace.withStore { store in
+        try Lookups.definitions(store: store, named: arguments[1])
+    }
+    if defs.isEmpty { print("no definitions") }
+    for entity in defs {
+        let anchor = entity.version.anchors.first
+        let line = anchor?.range?.startLine ?? 0
+        print("\(anchor?.path ?? "?"):\(line)  \(entity.version.name) "
+            + "[\(entity.entity.kind.rawValue)]  observed/syntactic")
+    }
+
+case "refs", "callers":
+    guard arguments.count >= 2 else { print(usage); exit(2) }
+    let wantCalls = arguments[0] == "callers"
+    let refWorkspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let answer = try await refWorkspace.withStore { store -> Lookups.ReferenceAnswer in
+        // Accept a bare name as well as a stable key.
+        let key: StableKey
+        if arguments[1].contains(":") {
+            key = StableKey(arguments[1])
+        } else {
+            guard let found = try Lookups.definitions(
+                store: store, named: arguments[1], limit: 1).first else {
+                return Lookups.ReferenceAnswer(references: [], evidence: .unavailable)
+            }
+            key = found.entity.stableKey
+        }
+        return wantCalls
+            ? try Lookups.callers(store: store, of: key)
+            : try Lookups.references(store: store, to: key)
+    }
+    if answer.evidence == .unavailable {
+        // The distinction that matters: no answer is not the same as
+        // an answer of none.
+        print("unknown — this repository has no compiler-resolved symbol edges "
+            + "(build it, then re-index)")
+    } else if answer.references.isEmpty {
+        print("none")
+    }
+    for reference in answer.references {
+        let anchor = reference.source.version.anchors.first
+        let counts = wantCalls
+            ? "\(reference.callCount) call(s)"
+            : "\(reference.referenceCount) reference(s), \(reference.callCount) call(s)"
+        print("\(anchor?.path ?? "?"):\(anchor?.range?.startLine ?? 0)  "
+            + "\(reference.source.version.name)  derived/compiler  \(counts)")
+    }
+
+case "radius":
+    guard arguments.count >= 2 else { print(usage); exit(2) }
+    let depth = arguments.count >= 3 ? Int(arguments[2]) ?? 2 : 2
+    let radiusWorkspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let reached = try await radiusWorkspace.withStore { store -> [ResolvedEntity] in
+        guard let found = try Lookups.definitions(
+            store: store, named: arguments[1], limit: 1).first else { return [] }
+        return try Lookups.blastRadius(store: store, of: found.entity.stableKey, depth: depth)
+    }
+    if reached.isEmpty { print("nothing reached") }
+    for entity in reached.prefix(20) {
+        print("\(entity.version.name)  [\(entity.entity.kind.rawValue)]  derived")
+    }
+
+case "span":
+    guard arguments.count >= 4, let from = Int(arguments[2]), let to = Int(arguments[3])
+    else { print(usage); exit(2) }
+    let spanDirectory = workspaceDirectory()
+    let spanWorkspace = try CygnusWorkspace(directory: spanDirectory)
+    let spanCAS = try ContentStore(root: spanDirectory.appendingPathComponent("cas"))
+    let span = try await spanWorkspace.withStore { store in
+        try SpanReader(store: store, contentStore: spanCAS)
+            .read(path: arguments[1], startLine: from, endLine: to)
+    }
+    var header = "\(span.repositoryName)/\(span.path):\(span.startLine)-\(span.endLine)"
+    if span.stale { header += "  [stale: working tree has drifted from this snapshot]" }
+    if let truncated = span.truncatedTo { header += "  [truncated at line \(truncated)]" }
+    print(header)
+    print(span.text)
 
 case "index":
     let workspace = try CygnusWorkspace(directory: workspaceDirectory())

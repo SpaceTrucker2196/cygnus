@@ -516,7 +516,9 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
         }
     }
 
-    private static func resolvedEntity(_ row: Row) throws -> ResolvedEntity {
+    // Internal, not private: the retrieval extension lives in its own
+    // file and decodes the same row shape.
+    static func resolvedEntity(_ row: Row) throws -> ResolvedEntity {
         ResolvedEntity(
             entity: Entity(
                 id: EntityID(row["eid"]),

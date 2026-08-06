@@ -390,3 +390,48 @@ slow index-store read.
 (`RetrievalTests`); engine suite now 118. Design and the reasoning
 behind the rejections (ripgrep, ANN indexes, overlap) in
 `docs/wiki/retrieval.md`.
+
+## 2026-08-06 — Phase 2: the structural entry points
+
+Almost all of this was wrapping query methods that already existed and
+were already tested but had no single-call entry point. The data was
+there; the door wasn't.
+
+- **`CygnusQuery/Lookups.swift`** — `definitions`, `references`,
+  `callers`, `symbols(in:)`, `blastRadius`.
+- **`CygnusQuery/Centrality.swift`** — weighted PageRank, ~70 lines,
+  no dependencies, deterministic by construction (fixed iterations,
+  sorted node order, dangling rank redistributed rather than leaked).
+  It exists so that truncating an answer to a token budget drops the
+  least important results instead of whichever the hash order
+  surfaced.
+- **`CygnusRetrieval/SpanReader.swift`** — reads a line range from the
+  **snapshot**, not the working tree, because every line number cygnus
+  produces refers to a blob in the CAS. When the file on disk no
+  longer hashes to that blob the snapshot's text is returned *and the
+  drift is reported*. Verified live: `span` on a file edited after
+  indexing reports `[stale: working tree has drifted from this
+  snapshot]`. Capped at 400 lines, and says when it capped.
+- **`SQLiteGraphStore+Retrieval.swift`** — kind-filtered name search
+  (the existing `searchNames` returns directories and modules too,
+  which makes it wrong for "where is X defined"), exact-match ranking
+  ahead of prefix, `currentBlob(forPath:)`, `resolvedEntities(anchoredIn:)`,
+  and `hasCompilerReferences`.
+
+**The rule the whole phase is built around: never return a confident
+empty answer.** "Nothing calls this" and "this repository was never
+built, so nothing can be known about what calls it" are different
+facts, and a tool that collapses them will eventually talk an agent
+into deleting live code. `ReferenceAnswer` therefore carries
+`evidence: .compiler | .unavailable`, and the CLI prints "unknown —
+this repository has no compiler-resolved symbol edges" rather than
+"none". Two tests pin exactly this pair.
+
+Phase 0's call/reference split pays off here for the first time.
+Live on cygnus: `refs DeclarationLocator` returns the type reference in
+`enrichReferences` (1 reference, 0 calls); `callers DeclarationLocator`
+correctly returns none — and because the repo *has* compiler edges,
+that "none" is a real answer rather than ignorance.
+
+`cygnus def|refs|callers|radius|span` added. 21 new tests (139 engine,
+184 kit). `cygnus verify` clean after re-index.
