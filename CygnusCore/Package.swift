@@ -9,6 +9,7 @@ let package = Package(
         .library(name: "CygnusGraph", targets: ["CygnusGraph"]),
         .library(name: "CygnusStore", targets: ["CygnusStore"]),
         .library(name: "CygnusQuery", targets: ["CygnusQuery"]),
+        .library(name: "CygnusRetrieval", targets: ["CygnusRetrieval"]),
         .library(name: "CygnusObservation", targets: ["CygnusObservation"]),
         .library(name: "CygnusProviders", targets: ["CygnusProviders"]),
         .executable(name: "cygnus", targets: ["cygnus"]),
@@ -90,11 +91,19 @@ let package = Package(
         // Query surface: subgraph fetch, projections, search, diff.
         .target(name: "CygnusQuery", dependencies: ["CygnusGraph", "CygnusStore"]),
 
+        // Retrieval: the agent-facing index over the graph. Windows and
+        // chunks hold blob hashes and line ranges, never source text —
+        // the CAS is the only copy (MISSION §7).
+        .target(name: "CygnusRetrieval", dependencies: [
+            "CygnusGraph", "CygnusStore", "CygnusQuery", "CygnusProviders",
+        ]),
+
         // Facade the app-side kit and the CLI consume.
         .target(name: "CygnusEngine", dependencies: [
             "CygnusGraph", "CygnusStore", "CygnusProviders", "CygnusObservation",
             "CygnusExtractorSwift", "CygnusExtractorTS", "CygnusExtractorIndex",
             "CygnusExtractorBuild", "CygnusDerive", "CygnusQuery",
+            "CygnusRetrieval",
         ]),
 
         .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusGraph"]),
@@ -108,6 +117,8 @@ let package = Package(
         .testTarget(name: "EngineTests", dependencies: ["CygnusEngine", "CygnusQuery"]),
         .testTarget(name: "StoreTests", dependencies: ["CygnusStore"]),
         .testTarget(name: "QueryTests", dependencies: ["CygnusQuery", "CygnusStore", "CygnusGraph"]),
+        .testTarget(name: "RetrievalTests",
+                    dependencies: ["CygnusRetrieval", "CygnusStore", "CygnusProviders"]),
         .testTarget(name: "ProviderTests", dependencies: ["CygnusProviders"]),
         .testTarget(name: "ExtractorTSTests", dependencies: ["CygnusExtractorTS"]),
     ]

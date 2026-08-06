@@ -44,6 +44,12 @@ them rather than restating them.
 - [[index-enrichment]] — compiler-resolved references from a built
   index store, including where the store hides for Xcode projects.
 
+## Getting facts back out
+
+- [[retrieval]] — the agent-facing index over the graph: why it holds
+  blob hashes rather than source, and what "unchanged costs nothing"
+  actually rests on.
+
 ## Getting facts onto the screen
 
 - [[graph-projections]] — scenes, and the charting rules that decide

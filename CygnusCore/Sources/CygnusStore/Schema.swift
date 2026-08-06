@@ -131,6 +131,8 @@ enum Schema {
                 """)
         }
 
+        RetrievalSchema.register(&migrator)
+
         return migrator
     }
 }

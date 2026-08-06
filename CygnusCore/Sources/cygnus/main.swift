@@ -3,6 +3,7 @@ import CygnusGraph
 import CygnusEngine
 import CygnusStore
 import CygnusQuery
+import CygnusRetrieval
 import CygnusProviders
 
 // CLI harness — the fastest way to exercise the engine without the
@@ -20,6 +21,7 @@ commands:
   index              snapshot + analyze all registered repositories
   query contains     print the containment tree
   query deps         print the import graph
+  search <text> [n]  BM25 search over indexed source (default 10 hits)
   revisions          list graph revisions
   diff <r1> <r2>     what changed between two revisions
   verify             full rebuild vs incremental graph, per repository
@@ -48,6 +50,26 @@ case "repos":
     let workspace = try CygnusWorkspace(directory: workspaceDirectory())
     for repo in try await workspace.repositories() {
         print("\(repo.id.raw)\t\(repo.displayName)\t\(repo.rootPath ?? "-")")
+    }
+
+case "search":
+    guard arguments.count >= 2 else { print(usage); exit(2) }
+    let limit = arguments.count >= 3 ? Int(arguments[2]) ?? 10 : 10
+    let searchDirectory = workspaceDirectory()
+    let searchWorkspace = try CygnusWorkspace(directory: searchDirectory)
+    let searchCAS = try ContentStore(root: searchDirectory.appendingPathComponent("cas"))
+    let hits = try await searchWorkspace.withStore { store in
+        try LexicalSearch(store: store, contentStore: searchCAS)
+            .search(arguments[1], limit: limit)
+    }
+    if hits.isEmpty { print("no matches") }
+    for hit in hits {
+        // The shape the MCP surface will render: citation first, so it
+        // can be pasted straight into a read, then how it was found.
+        print("\(hit.citation)  [\(hit.layer.rawValue)/\(hit.resolution.rawValue)]")
+        for line in (hit.snippet ?? "").split(separator: "\n", omittingEmptySubsequences: false) {
+            print("    \(line)")
+        }
     }
 
 case "index":

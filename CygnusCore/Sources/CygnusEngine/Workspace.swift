@@ -2,6 +2,7 @@ import Foundation
 import CygnusGraph
 import CygnusStore
 import CygnusQuery
+import CygnusRetrieval
 import CygnusProviders
 import CygnusObservation
 import CygnusDerive
@@ -302,6 +303,19 @@ public actor CygnusWorkspace {
         if !derived.relationships.isEmpty || !derived.retractRelationships.isEmpty {
             finalRevision = try store.commit(
                 derived, note: "derive \(repo.displayName): import rollups")
+        }
+
+        // Lexical retrieval index. Runs before enrichment so search
+        // freshness never waits on a slow index-store read, and writes
+        // no graph facts — it is an index over the CAS, so it mints no
+        // revision and cannot affect `verify`. Best-effort on the same
+        // contract as enrichment.
+        do {
+            progress?(IndexProgress(phase: "retrieve", completed: 0, total: 1))
+            try RetrievalIndexer(store: store, contentStore: contentStore)
+                .index(blobs: manifest.files.map(\.blob))
+        } catch {
+            FileHandle.standardError.write(Data("retrieval index skipped: \(error)\n".utf8))
         }
 
         // Index-store enrichment: compiler-resolved reference edges,

@@ -30,6 +30,19 @@ public final class SQLiteGraphStore: GraphStore, Sendable {
         try Schema.migrator().migrate(db)
     }
 
+    // Retrieval-index access. The index tables live in this database so
+    // they stay transactionally aligned with the graph they point at,
+    // but they are not graph facts, so they get their own seam rather
+    // than widening `db` to the whole module. `RetrievalIndexStore` is
+    // the only caller.
+    func readRetrieval<T>(_ body: (Database) throws -> T) throws -> T {
+        try db.read(body)
+    }
+
+    func writeRetrieval<T>(_ body: (Database) throws -> T) throws -> T {
+        try db.write(body)
+    }
+
     // MARK: - Repositories & snapshots
 
     public struct RegisteredRepository: Hashable, Codable, Sendable {

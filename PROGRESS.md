@@ -331,3 +331,62 @@ exposure predates this), `core:isCall`/`core:callCount` want constants
 in `PayloadKeys.swift`, and no test yet asserts `core:callCount`
 reaches the edge or that the identity change churns each edge exactly
 once and then stabilises.
+
+## 2026-08-05 — Phase 1: lexical retrieval over CAS blobs
+
+The engine could find a symbol by name and walk its edges, but had no
+way to answer "where does this text appear" — FTS5 covered entity
+names only, never source. That gap is closed, with no new dependency:
+`Package.swift`'s `dependencies:` array is unchanged.
+
+- **`v3-retrieval` migration.** `source_search` (FTS5, `body` +
+  `body_split`, `tokenize = 'unicode61 tokenchars ''_$'''`),
+  `source_indexed_blob` as the index ledger, and
+  `idx_snapshot_files_blob` — that last one is load-bearing:
+  `snapshot_files` is `WITHOUT ROWID` keyed `(snapshot_id, path)`, so
+  every retrieval join scanned it end to end without an index on
+  `blob_hash`. It would have shown up as inexplicably slow search
+  rather than as a bug.
+- **Everything keyed by blob hash, never path.** Unchanged, renamed
+  and reverted files all cost zero; the same vendored file in two
+  repos is indexed once. The incremental update is the set difference
+  `manifest blobs − indexed blobs` and nothing else — stricter than
+  `changedOrAdded`, because it also catches blobs a previous run
+  failed on. `cygnus watch` needed no changes at all, which is the
+  evidence the primitive was right.
+- **Paths arrive at query time** via a `snapshot_files` join against
+  each repo's newest committed snapshot. That join is the invalidation
+  mechanism and it is stronger than a sweep: a blob that has left the
+  tree cannot surface even before its rows are pruned. Staleness is
+  impossible by construction. `pruneOrphanBlobs` reclaims space and
+  never changes a result.
+- **The split column.** `unicode61` makes `withThrowingTaskGroup` one
+  token, so "task group" matched nothing. Every window is indexed
+  twice — verbatim, and with identifiers broken at case/underscore/
+  digit boundaries — weighted `bm25(source_search, 1.0, 0.4)` so exact
+  still beats split. Measured on cygnus: **7 of 10 windows matching
+  `Throwing`, and 8 matching `Deriver`, are reachable only through the
+  split column.** Without it the tier finds only what you could
+  already spell.
+- **Citations are exact, not window-sized.** Windows are 60 lines with
+  no overlap (overlap inflates the index and double-counts BM25); at
+  query time the window is re-read from the CAS, the matching line
+  located, and that line cited with two lines of context.
+- **Two blobs that would have taken the indexer down**, both verified
+  against this repo before writing the code: `LocalFSProvider` records
+  files over its 4 MB cap with the hash of *empty* content and never
+  stores the bytes, so it is in every manifest and absent from the CAS
+  and reading it throws — skipped by identity, not discovered by
+  crashing. And text-ness is decodability, not the language hint,
+  which is nil for `.toml`, `.sh` and an extensionless `Makefile`.
+
+Measured on cygnus: 230 files → 223 indexed blobs, 27,671 lines, 577
+windows. Re-index of an unchanged tree writes zero rows. `cygnus
+verify` clean — the retrieval pass mints no revision and asserts no
+facts, and runs before enrichment so search freshness never waits on a
+slow index-store read.
+
+`cygnus search <text> [n]` added to the CLI. 23 new tests
+(`RetrievalTests`); engine suite now 118. Design and the reasoning
+behind the rejections (ripgrep, ANN indexes, overlap) in
+`docs/wiki/retrieval.md`.
