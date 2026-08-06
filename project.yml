@@ -33,7 +33,6 @@ targets:
       - path: App
         excludes:
           - "Tests/**"
-          - "UITests/**"
     # Not sandboxed: the ops dashboard shells out to the user's `git`
     # and `gh` CLIs and reads/writes repo files directly. App-sandbox
     # would block subprocess spawning and arbitrary file access. This
@@ -71,18 +70,6 @@ targets:
       - package: CygnusKit
         product: CygnusKit
 
-  CygnusUITests:
-    type: bundle.ui-testing
-    platform: macOS
-    sources:
-      - App/UITests
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
-        PRODUCT_BUNDLE_IDENTIFIER: io.river.cygnus.mac.uitests
-        TEST_TARGET_NAME: Cygnus
-    dependencies:
-      - target: Cygnus
 
 schemes:
   Cygnus:
@@ -90,10 +77,8 @@ schemes:
       targets:
         Cygnus: all
         CygnusTests: [test]
-        CygnusUITests: [test]
     test:
       targets:
         - CygnusTests
-        - CygnusUITests
     run:
       config: Debug

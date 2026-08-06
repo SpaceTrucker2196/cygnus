@@ -604,3 +604,42 @@ never the path; it was that two `--product` flags in one `swift build`
 invocation build nothing.
 
 7 new tests (173 engine, 184 kit).
+
+## 2026-08-06 — make test is green: the UI tests were never going to pass
+
+The red oracle is closed, and the previous diagnosis was wrong.
+
+**Measured.** Launched by XCUITest the app process lives ~60 s and
+consumes CPU while presenting **zero windows** — confirmed with System
+Events, an accessibility path independent of XCUITest's own tree. The
+2026-07-24 entry blamed "an empty AX tree (environment degradation…
+rerun after reboot)". That is falsified: the tree contains the menu bar
+and TouchBar, so it is not empty; the window genuinely never exists,
+and a reboot cannot change it. These tests had most likely never
+passed.
+
+Ruled out by experiment, not by reasoning: the `--uitest-seed-repo`
+flag (a plain `app.launch()` fails identically), `app.activate()`, and
+the `.defaultLaunchBehavior(.presented)` / `.restorationBehavior(.disabled)`
+modifiers — removing both changed nothing. The same binary through
+LaunchServices presents a window and seeds correctly. This matches a
+known class of macOS regressions where a SwiftUI `WindowGroup` app
+launched by the system rather than a user never presents its window.
+
+**Resolution** (owner's call, recorded as D9): delete the
+`CygnusUITests` target, cover what it asserted headlessly in
+`BrowseRepoTests`. None of those assertions needed a window — the
+sidebar row is `store.repos`, the outline is the containment tree, the
+Flat view is `GraphScene.dependencies`, the search field is
+`SnapshotIndex.search`, the inspector is a node's own fields.
+
+The cost is stated rather than hidden: real UI-layer coverage is gone,
+and if the shell breaks these tests stay green.
+
+One bug caught while writing them, which is the point of writing them:
+I reached for `GraphScene.build` for the Flat view, but that charts
+build targets and is legitimately empty without a Makefile — the Code
+scene is `GraphScene.dependencies`. Both are now asserted, so the
+distinction survives someone "fixing" whichever they reach for first.
+
+`make test` exits 0: 173 engine, 190 kit, Xcode unit tests green.

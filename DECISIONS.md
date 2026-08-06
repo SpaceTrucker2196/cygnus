@@ -20,6 +20,7 @@ it happened.
 | D6 | 2026-08-05 | No ANN index (sqlite-vec/HNSW) for vector search | refused | corpus sized at ~13k chunks; ~1-3 ms brute force | — |
 | D7 | 2026-08-06 | Hand-rolled MCP protocol rather than the official Swift SDK | adopted | CygnusMCP/JSONRPC.swift | — |
 | D8 | 2026-08-06 | Separate cygnus-mcp executable, not a `cygnus mcp` subcommand | adopted | stdout is the protocol | — |
+| D9 | 2026-08-06 | XCUITest UI tests replaced by headless CygnusKit coverage | adopted | measured: app presents 0 windows under XCUITest | — |
 
 ## D1 — dead-code detection, refused
 
@@ -50,6 +51,38 @@ and an approximation to exact recall, to save milliseconds already
 inside budget.
 
 **What would change this.** ~500k chunks, i.e. a 10× corpus.
+
+## D9 — XCUITest removed, adopted
+
+**Decision.** Delete the `CygnusUITests` target and cover what it
+asserted from `CygnusKitTests` instead (`BrowseRepoTests`).
+
+**Why.** The UI tests never passed. Measured 2026-08-06: launched by
+XCUITest the app process lives ~60 s and consumes CPU while presenting
+**zero windows**, confirmed via System Events — an accessibility path
+independent of XCUITest's own tree. The same binary launched through
+LaunchServices presents a window and seeds correctly.
+
+The earlier diagnosis in PROGRESS.md (2026-07-24) — "XCUITest in this
+login session sees an empty AX tree… rerun after reboot" — is
+**falsified**. The tree is not empty; it contains the menu bar and
+TouchBar. There is genuinely no window, and no reboot will change that.
+
+Also ruled out by experiment: the `--uitest-seed-repo` flag (a plain
+launch fails identically) and the `.defaultLaunchBehavior(.presented)`
+/ `.restorationBehavior(.disabled)` modifiers (removing both changes
+nothing). This matches a known class of macOS regressions where a
+SwiftUI `WindowGroup` app launched by the system rather than by a user
+never presents its main window.
+
+**What this costs.** Real UI-layer coverage. Nothing in
+`BrowseRepoTests` proves a button is clickable; if the shell breaks,
+those tests stay green. That trade is stated in the test file rather
+than left implicit.
+
+**What would change this.** A macOS or Xcode release where a SwiftUI
+app launched by XCUITest presents its window — retest with a throwaway
+target before reinstating.
 
 ## D7 — hand-rolled MCP, adopted
 
