@@ -7,7 +7,7 @@ import Foundation
 // MARK: - Types
 
 public enum DocKind: String, Sendable, CaseIterable {
-    case mission, charter, factory, progress, roadmap, milestones
+    case mission, charter, factory, progress, roadmap, milestones, decisions
     case wiki, views, ledger, metrics, readme, other
 
     public var title: String {
@@ -18,6 +18,7 @@ public enum DocKind: String, Sendable, CaseIterable {
         case .progress: "Progress"
         case .roadmap: "Roadmap"
         case .milestones: "Milestones"
+        case .decisions: "Decisions"
         case .wiki: "Wiki"
         case .views: "View Specs"
         case .ledger: "Ledger"
@@ -123,7 +124,7 @@ public enum FactoryDocScan {
     /// Root-level docs we recognise, in the order we want them grouped.
     static let rootDocs = ["MISSION.md", "AGENTS.md", "CLAUDE.md", "FACTORY.md",
                            "PROGRESS.md", "ROADMAP.md", "README.md",
-                           "METRICS.md", "LEDGER.md"]
+                           "METRICS.md", "LEDGER.md", "DECISIONS.md"]
     static let agentDocs = ["agents/MISSION.md", "agents/AGENTS.md", "agents/FACTORY.md",
                             "agents/dark-factory.md", "agents/converge.md"]
     static let docDirs = ["docs", "docs/wiki", "docs/views"]
@@ -152,6 +153,7 @@ public enum FactoryDocScan {
         case "MILESTONES.MD": return .milestones
         case "LEDGER.MD": return .ledger
         case "METRICS.MD": return .metrics
+        case "DECISIONS.MD": return .decisions
         case "README.MD": return .readme
         default: return path.hasPrefix("docs/") ? .wiki : .other
         }
@@ -161,7 +163,9 @@ public enum FactoryDocScan {
         let name = (path as NSString).lastPathComponent.uppercased()
         switch name {
         case "LEDGER.MD": return .readOnly
-        case "METRICS.MD": return .appendOnly
+        // Append-only for the same reason as METRICS: superseding a
+        // decision is a new row, never an edit to an old one.
+        case "METRICS.MD", "DECISIONS.MD": return .appendOnly
         default: return .editable
         }
     }

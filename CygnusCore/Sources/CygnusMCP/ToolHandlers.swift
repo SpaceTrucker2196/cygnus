@@ -33,6 +33,7 @@ public struct ToolHandlers: Sendable {
 
         switch name {
         case "cygnus_status":      return try await status()
+        case "cygnus_prior_decisions": return try await decisions(arguments, repo, maxTokens)
         case "cygnus_repo_map":    return try await repoMap(arguments, repo, maxTokens)
         case "cygnus_search":      return try await search(arguments, repo, maxTokens)
         case "cygnus_find_definition": return try await definitions(arguments, repo, maxTokens)
@@ -74,6 +75,46 @@ public struct ToolHandlers: Sendable {
         lines.append("")
         lines.append("semantic search: unavailable (not built yet — lexical and structural only)")
         return lines.joined(separator: "\n")
+    }
+
+    /// The record of what was already settled. Deliberately verbose
+    /// about refusals: an adopted decision usually left code behind
+    /// that an agent will trip over anyway, but a refusal left nothing
+    /// at all, and that is the one worth spending tokens on.
+    private func decisions(_ arguments: [String: JSONValue],
+                           _ repo: RepositoryID?, _ maxTokens: Int) async throws -> String {
+        let topic = arguments["topic"]?.stringValue
+        let store = contentStore
+        let records = try await workspace.withStore { graph -> [DecisionRecord] in
+            let reader = DecisionReader(store: graph, contentStore: store)
+            return try topic.map { try reader.matching($0, repository: repo) }
+                ?? reader.all(repository: repo)
+        }
+        guard !records.isEmpty else {
+            return topic.map {
+                "No recorded decision mentions \($0). Note this means *no record*, "
+                + "not that the question is open — a repository without DECISIONS.md "
+                + "has simply never written its decisions down."
+            } ?? "No decisions recorded. Repositories record them in DECISIONS.md."
+        }
+
+        var budget = TokenBudget(maxTokens: maxTokens)
+        let refused = records.filter { $0.status == .refused }.count
+        budget.admitAlways("\(records.count) recorded decision(s)"
+            + (refused > 0 ? ", \(refused) of them refusals" : ""))
+        for record in records {
+            var block = "\(record.repositoryName)/DECISIONS.md  \(record.id) "
+                + "[\(record.status.rawValue)] \(record.date)  \(record.summary)"
+            if !record.evidence.isEmpty, record.evidence.lowercased() != "none" {
+                block += "\n    evidence: \(record.evidence)"
+            }
+            if let detail = record.detail, record.status == .refused {
+                block += "\n" + detail.split(separator: "\n")
+                    .prefix(6).map { "    \($0)" }.joined(separator: "\n")
+            }
+            guard budget.admitCounted(block) else { break }
+        }
+        return budget.finish(total: records.count)
     }
 
     private func repoMap(_ arguments: [String: JSONValue],

@@ -62,6 +62,24 @@ public enum ToolCatalog {
             maxTokens: 800),
 
         ToolDefinition(
+            name: "cygnus_prior_decisions",
+            description: """
+                What this factory has already decided — and, more importantly, what \
+                it has already tried and rejected. Call this BEFORE proposing an \
+                architectural change, a new dependency, or a tool the repository \
+                might have evaluated before. A refusal leaves no code behind, so \
+                nothing in the tree will remind you it happened; this is the only \
+                place that record exists. Pass a topic to filter, or omit it to see \
+                everything.
+                """,
+            schema: schema(properties: [
+                "topic": string("Words to match against decisions; omit for all."),
+                "repo": repoArgument,
+                "max_tokens": integer("Response ceiling.", default: 2000, max: 4000),
+            ]),
+            maxTokens: 4000),
+
+        ToolDefinition(
             name: "cygnus_repo_map",
             description: """
                 A ranked skeleton of a repository: directories and files ordered by \

@@ -558,3 +558,49 @@ MeowPassword, DF_Template — 3,791 files):
   we settled" work stands on.
 - `cygnus_find_definition RepoMap` distinguishes the type, the handler
   function and the test suite, each with its own span.
+
+## 2026-08-06 — The factory remembers what it already refused
+
+A repository records its code in code, but records its *rejected*
+options nowhere. A refusal leaves no artifact behind, so nothing in the
+tree reminds anyone it happened — which is why the same idea gets
+rebuilt every few months by whoever arrives next, and why "we measured
+this and it does not work" is the most expensive knowledge a factory
+owns and the easiest to lose.
+
+- **`DECISIONS.md`** — append-only, a pipe-table index (parsed by the
+  same machinery as METRICS/LEDGER) plus one `## <id> — …` section per
+  row carrying the reasoning. The id joins them, so the record a tool
+  reads and the record an agent reads cannot drift apart. Eight
+  decisions backfilled, including two refusals that until now existed
+  only as prose in a milestones bullet: the dead-code lens (majority
+  false positives, measured) and ANN indexes (~1–3 ms brute force at
+  this corpus size doesn't justify a C dependency).
+- **`DecisionRecord` / `DecisionReader`** in CygnusRetrieval — reads it
+  from the indexed snapshot, not the working tree, so answers stay
+  consistent with everything else cygnus says. Parsing is deliberately
+  tolerant: a half-filled record is still worth surfacing, and refusing
+  to parse one would hide exactly the entry someone left unfinished.
+  The template's example row is recognised and skipped, so a freshly
+  installed factory doesn't look like it already decided something.
+- **`cygnus_prior_decisions`** — tenth MCP tool. Its description tells
+  an agent to call it *before* proposing an architectural change or a
+  new dependency, which is the only moment the answer is worth
+  anything. Refusals get their reasoning included; adopted decisions
+  usually left code behind that an agent will trip over anyway.
+- `FactoryDocsProvider` classifies `DECISIONS.md` as its own doc kind,
+  append-only like METRICS.
+
+Verified live: asking about "dead code detection" returns D1 with its
+measured reasoning, instead of an agent rebuilding it.
+
+**One pre-existing test caught this work**, which is the system doing
+its job: `CIFlowProjectionTests.realMakefilesProjectIdentically` pins
+graph-derived and file-parsed CI flows to agree, and the `$$(cd … && …)`
+command substitution I put in `install-mcp` made them diverge. The
+Makefile is simpler now — `.build/release` is a symlink SwiftPM
+maintains, so no shell trickery was needed. The original failure was
+never the path; it was that two `--product` flags in one `swift build`
+invocation build nothing.
+
+7 new tests (173 engine, 184 kit).
