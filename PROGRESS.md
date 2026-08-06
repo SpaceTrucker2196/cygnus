@@ -435,3 +435,43 @@ that "none" is a real answer rather than ignorance.
 
 `cygnus def|refs|callers|radius|span` added. 21 new tests (139 engine,
 184 kit). `cygnus verify` clean after re-index.
+
+## 2026-08-06 — Phase 3: the repo map, and the budget everything answers to
+
+- **`CygnusRetrieval/TokenBudget.swift`** — a budget you emit *into*,
+  not a string cut afterwards. Post-hoc truncation chops whatever sat
+  at the end of a rendered blob, which is how an agent ends up with
+  half a citation and no idea anything was withheld. Two rules are
+  non-negotiable: a citation is always affordable (a body that doesn't
+  fit is elided, the citation still goes out), and truncation always
+  announces itself with counts. The estimate is deliberately
+  pessimistic at 3 chars/token — identifier-dense source tokenizes
+  harder than prose, and the errors are asymmetric: under-counting
+  overruns a real context window, over-counting costs a result.
+- **`CygnusRetrieval/RepoMap.swift`** — a projection, never a table
+  (invariant 6), memoizable on `(repository, revision)` because
+  revisions are monotonic and a commit is one transaction. Files are
+  ranked by weighted PageRank over references (weight = count), builds
+  (2) and imports (1); truncating the tail therefore drops the least
+  connected files rather than whatever sorted last.
+
+Two things the first rendering got wrong, both fixed before commit:
+
+- **Directory headers repeated.** Global ranking interleaves
+  directories, so `Sources/CygnusKit/` appeared over and over. Files
+  are now grouped by directory, with each directory inheriting its best
+  file's rank — ordering still leads with what matters, without the
+  noise.
+- **The per-file symbol allowance went to trivia.** Source order spends
+  it on whatever sits at the top of the file, which is usually one-line
+  stored properties (`raw:10 id:21 name:11`) that say nothing about
+  what the file is. Selection now prefers types and functions, then
+  restores reading order.
+
+Measured on cygnus: 238 files rendered to 2,943 estimated tokens,
+`shown 71 of 238 (truncated)`. Focusing (`cygnus map cygnus
+SourceWindows`) restarts the walk on the focus symbol's file and pulls
+`CygnusRetrieval/` to the top — "what matters for this task" rather
+than "what matters here".
+
+`cygnus map [repo] [focus…]` added. 12 new tests (151 engine, 184 kit).

@@ -27,6 +27,7 @@ commands:
   callers <symbol>   what calls it — calls only, not every mention
   radius <symbol>    blast radius, ranked by centrality
   span <path> <a> <b>  read lines a..b from the snapshot, not the tree
+  map [repo] [focus…]  ranked repository skeleton, budgeted to ~3k tokens
   revisions          list graph revisions
   diff <r1> <r2>     what changed between two revisions
   verify             full rebuild vs incremental graph, per repository
@@ -157,6 +158,24 @@ case "span":
     if let truncated = span.truncatedTo { header += "  [truncated at line \(truncated)]" }
     print(header)
     print(span.text)
+
+case "map":
+    let mapWorkspace = try CygnusWorkspace(directory: workspaceDirectory())
+    let repositories = try await mapWorkspace.repositories()
+    let wanted = arguments.count >= 2 ? arguments[1] : nil
+    let focus = arguments.count >= 3 ? Array(arguments.dropFirst(2)) : []
+    let selected = wanted.map { name in
+        repositories.filter { $0.displayName == name || $0.id.raw == name }
+    } ?? repositories
+    if selected.isEmpty { print("no such repository"); exit(2) }
+    for repo in selected {
+        let rendered = try await mapWorkspace.withStore { store in
+            try RepoMap(store: store).render(
+                repository: repo.id, options: .init(focus: focus))
+        }
+        print(rendered)
+        print("")
+    }
 
 case "index":
     let workspace = try CygnusWorkspace(directory: workspaceDirectory())
