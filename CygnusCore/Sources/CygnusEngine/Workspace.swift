@@ -154,6 +154,13 @@ public actor CygnusWorkspace {
             } catch {
                 FileHandle.standardError.write(Data("enrichment skipped: \(error)\n".utf8))
             }
+            // The retrieval index is keyed by blob, not by revision, so
+            // "the source did not change" says nothing about whether it
+            // has been indexed. A repository last analyzed before the
+            // retrieval tier existed — or before a model was installed —
+            // reaches this path with nothing chunked and nothing
+            // embedded, and would never acquire either.
+            await updateRetrieval(repoID: repoID, manifest: manifest, progress: progress)
             return IndexResult(
                 repository: repoID, revision: revision, snapshot: snapshotID,
                 filesAnalyzed: manifest.files.count, filesChanged: 0, filesRenamed: 0,
@@ -310,30 +317,7 @@ public actor CygnusWorkspace {
         // no graph facts — it is an index over the CAS, so it mints no
         // revision and cannot affect `verify`. Best-effort on the same
         // contract as enrichment.
-        do {
-            progress?(IndexProgress(phase: "retrieve", completed: 0, total: 1))
-            let blobs = manifest.files.map(\.blob)
-            try RetrievalIndexer(store: store, contentStore: contentStore).index(blobs: blobs)
-
-            // Semantic tier, when a model is installed. Chunking is
-            // cheap and model-independent, so it runs regardless and
-            // the vectors follow whenever an embedder appears — a
-            // repository indexed before the model was converted does
-            // not need re-chunking afterwards.
-            if let embedder = HybridSearch.embedder(workspace: directory) {
-                let semantic = SemanticIndexer(store: store, contentStore: contentStore,
-                                               embedder: embedder)
-                try semantic.chunk(blobs: blobs, repository: repoID)
-                progress?(IndexProgress(phase: "embed", completed: 0, total: 1))
-                let embedded = try await semantic.embedPending()
-                if embedded.vectorsEmbedded > 0 {
-                    FileHandle.standardError.write(
-                        Data("embedded \(embedded.vectorsEmbedded) chunks\n".utf8))
-                }
-            }
-        } catch {
-            FileHandle.standardError.write(Data("retrieval index skipped: \(error)\n".utf8))
-        }
+        await updateRetrieval(repoID: repoID, manifest: manifest, progress: progress)
 
         // Index-store enrichment: compiler-resolved reference edges,
         // when a build has produced an index store. Best-effort by
@@ -558,6 +542,44 @@ public actor CygnusWorkspace {
         return try store.commit(
             changes,
             note: "enrich: \(pairs.count) file + \(symbolPairs.count) symbol reference edges")
+    }
+
+    /// Bring the retrieval index up to date: lexical windows always,
+    /// chunks and vectors when a model is installed.
+    ///
+    /// Called from **both** index paths — the full one and the
+    /// source-unchanged early return. Everything here is keyed by blob
+    /// rather than by revision, so "nothing changed" is not a reason to
+    /// skip it: a repository indexed before this tier existed has an
+    /// empty index and an unchanged tree, and would otherwise stay that
+    /// way forever.
+    ///
+    /// Best-effort by the same contract as enrichment — retrieval can
+    /// never fail an index, but its failures are reported.
+    private func updateRetrieval(repoID: RepositoryID,
+                                 manifest: SnapshotManifest,
+                                 progress: (@Sendable (IndexProgress) -> Void)?) async {
+        do {
+            progress?(IndexProgress(phase: "retrieve", completed: 0, total: 1))
+            let blobs = manifest.files.map(\.blob)
+            try RetrievalIndexer(store: store, contentStore: contentStore).index(blobs: blobs)
+
+            // Chunking is cheap and model-independent, so it runs
+            // regardless; the vectors follow whenever an embedder
+            // appears, without re-chunking.
+            guard let embedder = HybridSearch.embedder(workspace: directory) else { return }
+            let semantic = SemanticIndexer(store: store, contentStore: contentStore,
+                                           embedder: embedder)
+            try semantic.chunk(blobs: blobs, repository: repoID)
+            progress?(IndexProgress(phase: "embed", completed: 0, total: 1))
+            let embedded = try await semantic.embedPending()
+            if embedded.vectorsEmbedded > 0 {
+                FileHandle.standardError.write(
+                    Data("embedded \(embedded.vectorsEmbedded) chunks\n".utf8))
+            }
+        } catch {
+            FileHandle.standardError.write(Data("retrieval index skipped: \(error)\n".utf8))
+        }
     }
 
     /// Strip a file stable key back to its repo-relative path.

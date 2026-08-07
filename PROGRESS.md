@@ -720,3 +720,44 @@ Degradation verified against the live server, all three paths:
 219 engine, 190 kit. `make test` exits 0. Still zero package
 dependencies — `Package.swift`'s `dependencies:` array has not changed
 once across the whole retrieval build.
+
+## 2026-08-07 — Semantic search is live, and the bug that hid it
+
+Conversion works, embedding works, and search answers questions that
+share no vocabulary with the code.
+
+**The conversion blocker was the frontend, not a version pair.**
+Instrumenting coremltools to name the node it died on answered in one
+run: `aten::Int` over `batch_size`, a rank-1 array. Transformer
+`forward` methods do `batch_size, seq_length = input_ids.size()`, and
+`torch.jit.trace` leaves that shape arithmetic in the graph as an int
+cast over an array. `torch.export` lowers it cleanly. Four earlier
+rounds of pinning — model, architecture, input shape, attention
+implementation, transformers version, coremltools/torch pair — were all
+eliminating variables that never mattered. **One round of
+instrumentation would have cost less than four rounds of guessing.**
+
+**A bug the first full run exposed.** `index()` has an early return for
+"source unchanged since the last snapshot", and it predates the
+retrieval tier by months. Everything in that tier is keyed by **blob**,
+not revision, so an unchanged tree says nothing about whether it has
+been indexed — and a repository last analyzed before the tier existed
+reached that path with nothing chunked, nothing embedded, and no way to
+ever acquire either. The first run embedded only cygnus (41 files
+changed); sloth, otter, henge and MeowPassword finished in under four
+seconds each having done nothing at all.
+
+Retrieval indexing now lives in `updateRetrieval` and runs on **both**
+paths. Chunks went from 4,063 to 7,100+ on the re-run, from the repos
+that had silently been skipped.
+
+Two smaller fixes from running it live rather than in tests:
+`CoreMLEmbedder` must supply `token_type_ids`, which BERT-family
+encoders declare required and which the first prediction rejected; and
+failed conversions leave empty model directories behind, which
+`EmbedderLocator` skips but which are confusing to find later.
+
+Shipped model is `bge-base-en-v1.5@af12d754` (768d) — general-purpose,
+not code-tuned. jina gets further with export but fails on tensor
+subclasses in its custom ALiBi code. The quality gap is real and
+unmeasured; recorded as D12.
