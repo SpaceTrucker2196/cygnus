@@ -54,6 +54,11 @@ def main():
                         help="prepended to queries (e5 wants 'query: ')")
     parser.add_argument("--document-prefix", default="",
                         help="prepended to documents (e5 wants 'passage: ')")
+    parser.add_argument("--enumerated-shapes", action="store_true",
+                        help="bucket input widths (64/128/max) for throughput. Off by "
+                             "default: models with dynamic position bias such as ALiBi "
+                             "compute from the sequence length, and a symbolic length "
+                             "cannot be converted")
     parser.add_argument("--trust-remote-code", action="store_true",
                         help="execute the model's own Python from the Hub. Required by "
                              "models with custom architectures (jina-v2, nomic, codet5p) "
@@ -61,6 +66,7 @@ def main():
     arguments = parser.parse_args()
 
     try:
+        import numpy as np
         import torch
         import coremltools as ct
         from transformers import AutoConfig, AutoModel, AutoTokenizer
@@ -103,8 +109,13 @@ def main():
             "the default. Note the code above may come from a *different* repository "
             "than the weights.")
 
+    # Eager attention, not SDPA. Newer transformers default to a scaled
+    # dot-product path whose graph coremltools cannot lower — it hits an
+    # int() cast on a non-scalar and dies with a message naming neither.
+    # Eager is the traceable implementation.
     model = AutoModel.from_pretrained(
         arguments.model, config=config,
+        attn_implementation="eager",
         trust_remote_code=arguments.trust_remote_code).eval()
     print(f"  architecture: {type(model).__name__}")
 
@@ -116,16 +127,22 @@ def main():
     traced = torch.jit.trace(model, example, strict=False)
 
     print("converting to Core ML …")
-    # Enumerated shapes rather than one fixed width: most declaration
-    # chunks are far under the maximum, and bucketing them is close to a
-    # 2x throughput win over always padding to full length.
-    buckets = sorted({64, 128, width})
-    shape = ct.EnumeratedShapes(shapes=[[1, n] for n in buckets], default=[1, width])
+    # A fixed width by default. Bucketing input widths is close to a 2x
+    # throughput win, but it makes the sequence length symbolic, and a
+    # model whose position bias is computed from that length — ALiBi, as
+    # in jina-v2 — hits `int()` on a symbolic value and fails to
+    # convert. Every chunk padding to full width is the cost of
+    # supporting those models at all.
+    if arguments.enumerated_shapes:
+        buckets = sorted({64, 128, width})
+        shape = ct.EnumeratedShapes(shapes=[[1, n] for n in buckets], default=[1, width])
+    else:
+        shape = (1, width)
     converted = ct.convert(
         traced,
         inputs=[
-            ct.TensorType(name="input_ids", shape=shape, dtype="int32"),
-            ct.TensorType(name="attention_mask", shape=shape, dtype="int32"),
+            ct.TensorType(name="input_ids", shape=shape, dtype=np.int32),
+            ct.TensorType(name="attention_mask", shape=shape, dtype=np.int32),
         ],
         minimum_deployment_target=ct.target.macOS15,
         compute_precision=ct.precision.FLOAT16,

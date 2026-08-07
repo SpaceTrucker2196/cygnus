@@ -89,11 +89,24 @@ if [ ! -d "$VENV" ]; then
 fi
 
 say "Installing dependencies"
+# Pinned, and the pins are load-bearing rather than cautious.
+#
+#   transformers <5 — models publishing custom architectures (jina,
+#     nomic) target the 4.x API. On 5.x their Hub code fails importing
+#     symbols that were removed, e.g. find_pruneable_heads_and_indices.
+#   torch 2.7 — the newest release coremltools has actually tested
+#     against; anything later warns and may convert incorrectly rather
+#     than failing.
+#
+# This is a converter for third-party model code, so it lives at the
+# intersection of three release trains and floats badly. Raise a pin
+# only after a conversion succeeds with it.
+DEPS=('coremltools>=8.0,<10' 'transformers>=4.40,<5' 'torch==2.7.0')
 if command -v uv >/dev/null 2>&1; then
-    VIRTUAL_ENV="$VENV" uv pip install 'coremltools>=8.0' 'transformers>=4.40' torch
+    VIRTUAL_ENV="$VENV" uv pip install "${DEPS[@]}"
 else
     "$VENV/bin/pip" install --upgrade pip >/dev/null
-    "$VENV/bin/pip" install 'coremltools>=8.0' 'transformers>=4.40' torch
+    "$VENV/bin/pip" install "${DEPS[@]}"
 fi
 
 say "Converting (downloads the model on first run)"

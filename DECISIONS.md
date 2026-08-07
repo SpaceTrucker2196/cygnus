@@ -22,6 +22,7 @@ it happened.
 | D8 | 2026-08-06 | Separate cygnus-mcp executable, not a `cygnus mcp` subcommand | adopted | stdout is the protocol | — |
 | D9 | 2026-08-06 | XCUITest UI tests replaced by headless CygnusKit coverage | adopted | measured: app presents 0 windows under XCUITest | — |
 | D10 | 2026-08-06 | sloth is the reference instance; the audit is validated against it | adopted | CygnusCore/Tests/RetrievalTests/SlothPatternTests.swift | — |
+| D11 | 2026-08-07 | Core ML conversion blocked on coremltools 9 / torch 2.7 | provisional | four hypotheses eliminated, see below | — |
 
 ## D1 — dead-code detection, refused
 
@@ -84,6 +85,41 @@ than left implicit.
 **What would change this.** A macOS or Xcode release where a SwiftUI
 app launched by XCUITest presents its window — retest with a throwaway
 target before reinstating.
+
+## D11 — Core ML conversion is blocked, provisional
+
+**Status.** The semantic tier is built and tested; no model artifact
+exists because conversion fails in the toolchain, not in our code.
+
+**The failure.** Always the same op —
+`coremltools/converters/mil/frontend/torch/ops.py:_int` calling `int()`
+on a non-0-dimensional array:
+
+    TypeError: only 0-dimensional arrays can be converted to Python scalars
+
+**Eliminated by experiment** (2026-08-07), each a separate run:
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| jina's ALiBi position bias | converted stock BERT (`BAAI/bge-base-en-v1.5`) instead | identical failure |
+| symbolic sequence length | fixed `(1, 256)` shape rather than `EnumeratedShapes` | identical failure |
+| SDPA attention graph | `attn_implementation="eager"` | identical failure |
+| transformers too new | 5.14.1 → 4.57.6 → 4.44.2 | identical failure |
+
+So it is independent of model, architecture, input shape, attention
+implementation, and transformers version. What remains is
+**coremltools 9.0's torch frontend against torch 2.7.0**.
+
+**Not yet tried**, in rough order of promise: coremltools 8.x rather
+than 9.0; the `torch.export` frontend instead of `torch.jit.trace`;
+dropping `config.torchscript = True`; an ONNX intermediate; or a
+prebuilt Core ML encoder that skips conversion entirely.
+
+**What this costs.** Nothing already shipped. Every other tier works,
+and the degradation contract means the absence is reported rather than
+hidden: status says `unavailable`, `mode: hybrid` runs lexical and says
+so, `mode: semantic` errors with the fix. The semantic tier turns on
+the day a model lands, with no further code.
 
 ## D10 — sloth is the pattern's ground truth, adopted
 
