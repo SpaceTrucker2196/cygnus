@@ -22,7 +22,8 @@ it happened.
 | D8 | 2026-08-06 | Separate cygnus-mcp executable, not a `cygnus mcp` subcommand | adopted | stdout is the protocol | — |
 | D9 | 2026-08-06 | XCUITest UI tests replaced by headless CygnusKit coverage | adopted | measured: app presents 0 windows under XCUITest | — |
 | D10 | 2026-08-06 | sloth is the reference instance; the audit is validated against it | adopted | CygnusCore/Tests/RetrievalTests/SlothPatternTests.swift | — |
-| D11 | 2026-08-07 | Core ML conversion blocked on coremltools 9 / torch 2.7 | provisional | four hypotheses eliminated, see below | — |
+| D11 | 2026-08-07 | Core ML conversion blocked on coremltools 9 / torch 2.7 | superseded | — | — |
+| D12 | 2026-08-07 | Convert with torch.export, never torch.jit.trace | adopted | tools/convert-embedder.py; bge-base converts, jina does not | D11 |
 
 ## D1 — dead-code detection, refused
 
@@ -86,7 +87,41 @@ than left implicit.
 app launched by XCUITest presents its window — retest with a throwaway
 target before reinstating.
 
-## D11 — Core ML conversion is blocked, provisional
+## D12 — torch.export, not torch.jit.trace, adopted
+
+**Decision.** The converter uses `torch.export.export`. D11 blamed a
+version pair; the real cause was the frontend, and no amount of pinning
+would have fixed it.
+
+**Why trace fails.** Instrumenting coremltools to name the node it dies
+on gave the answer in one run: `aten::Int` over `batch_size`, a rank-1
+array. Transformer `forward` methods do `batch_size, seq_length =
+input_ids.size()`, and the trace frontend leaves that shape arithmetic
+in the graph as an int cast over an array. coremltools then calls
+`int()` on it and raises a TypeError naming neither the model nor the
+op. `torch.export` lowers the same graph without it.
+
+Everything D11 eliminated stays eliminated — model, architecture, input
+shape, attention implementation, transformers version, and the
+coremltools/torch pair were all irrelevant. The lesson is that four
+rounds of pinning cost more than one round of instrumentation, and the
+instrumentation should have come first.
+
+**Measured.** `BAAI/bge-base-en-v1.5` converts (768d, 256 tokens,
+`bge-base-en-v1.5@af12d754`), embeds 62 chunks of CygnusEmbed, and
+answers a query sharing no vocabulary with the code — "how do we turn
+text into numbers a computer can compare" returns
+`EmbedderLocator.swift`.
+
+**Still open.** `jinaai/jina-embeddings-v2-base-code` gets further with
+export but fails converting constants: `.numpy() is not supported for
+tensor subclasses`, from its custom ALiBi implementation. The
+code-specific model is therefore not available yet, and the shipped
+default is a general-purpose encoder — the quality gap CORE-Bench
+documents is real and unmeasured here. Worth revisiting with a
+code-tuned model that has a stock architecture.
+
+## D11 — Core ML conversion is blocked, superseded by D12
 
 **Status.** The semantic tier is built and tested; no model artifact
 exists because conversion fails in the toolchain, not in our code.

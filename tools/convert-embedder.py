@@ -81,12 +81,8 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         arguments.model, trust_remote_code=arguments.trust_remote_code)
 
-    # torchscript is a *config* flag, not a from_pretrained kwarg — it
-    # untangles tied weights and makes the model return plain tuples,
-    # both of which tracing needs.
     config = AutoConfig.from_pretrained(
         arguments.model, trust_remote_code=arguments.trust_remote_code)
-    config.torchscript = True
 
     # Check BEFORE loading, not after. A custom architecture loaded as
     # stock BERT is the worst outcome available here — conversion
@@ -120,11 +116,37 @@ def main():
     print(f"  architecture: {type(model).__name__}")
 
     width = arguments.max_tokens
-    example = (torch.ones(1, width, dtype=torch.int32),
-               torch.ones(1, width, dtype=torch.int32))
 
-    print("tracing …")
-    traced = torch.jit.trace(model, example, strict=False)
+    # A thin wrapper with a fixed positional signature, returning just
+    # the hidden states. Core ML has no use for the rest of the output
+    # object, and naming the inputs here is what names them in the
+    # converted model.
+    class Encoder(torch.nn.Module):
+        def __init__(self, inner):
+            super().__init__()
+            self.inner = inner
+
+        def forward(self, input_ids, attention_mask, token_type_ids):
+            return self.inner(input_ids=input_ids,
+                              attention_mask=attention_mask,
+                              token_type_ids=token_type_ids).last_hidden_state
+
+    example = (torch.ones(1, width, dtype=torch.int32),
+               torch.ones(1, width, dtype=torch.int32),
+               torch.zeros(1, width, dtype=torch.int32))
+
+    # torch.export, not torch.jit.trace.
+    #
+    # This is the whole reason conversion works. The trace frontend
+    # turns a transformer's shape arithmetic — `batch_size, seq_length
+    # = input_ids.size()` — into an aten::Int over a rank-1 array, and
+    # coremltools dies calling int() on it with a message that names
+    # neither the model nor the op. That failure is identical across
+    # every model, input shape, attention implementation, transformers
+    # version and coremltools/torch pair we tried; the frontend was
+    # always the variable. torch.export lowers the same graph cleanly.
+    print("exporting …")
+    exported = torch.export.export(Encoder(model).eval(), example)
 
     print("converting to Core ML …")
     # A fixed width by default. Bucketing input widths is close to a 2x
@@ -133,17 +155,10 @@ def main():
     # in jina-v2 — hits `int()` on a symbolic value and fails to
     # convert. Every chunk padding to full width is the cost of
     # supporting those models at all.
-    if arguments.enumerated_shapes:
-        buckets = sorted({64, 128, width})
-        shape = ct.EnumeratedShapes(shapes=[[1, n] for n in buckets], default=[1, width])
-    else:
-        shape = (1, width)
+    # Input names and shapes come from the exported program, so they do
+    # not need restating here.
     converted = ct.convert(
-        traced,
-        inputs=[
-            ct.TensorType(name="input_ids", shape=shape, dtype=np.int32),
-            ct.TensorType(name="attention_mask", shape=shape, dtype=np.int32),
-        ],
+        exported,
         minimum_deployment_target=ct.target.macOS15,
         compute_precision=ct.precision.FLOAT16,
     )

@@ -63,15 +63,27 @@ public actor CoreMLEmbedder: TextEmbedder {
 
         let ids = try MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .int32)
         let mask = try MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .int32)
+        // BERT-family encoders take a third input distinguishing
+        // sentence A from sentence B. We embed one span at a time, so
+        // it is always zero — but the converted model declares it
+        // required, and omitting it fails the prediction outright.
+        let segments = try MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .int32)
         for (index, id) in encoded.ids.enumerated() {
             ids[index] = NSNumber(value: id)
             mask[index] = NSNumber(value: encoded.mask[index])
+            segments[index] = 0
         }
 
-        let input = try MLDictionaryFeatureProvider(dictionary: [
+        var features: [String: MLFeatureValue] = [
             "input_ids": MLFeatureValue(multiArray: ids),
             "attention_mask": MLFeatureValue(multiArray: mask),
-        ])
+        ]
+        // Only if this model wants it: an encoder converted without the
+        // segment input would reject an unexpected feature.
+        if model.modelDescription.inputDescriptionsByName["token_type_ids"] != nil {
+            features["token_type_ids"] = MLFeatureValue(multiArray: segments)
+        }
+        let input = try MLDictionaryFeatureProvider(dictionary: features)
         let output = try model.prediction(from: input)
 
         guard let name = output.featureNames.first(where: {

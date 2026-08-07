@@ -312,8 +312,25 @@ public actor CygnusWorkspace {
         // contract as enrichment.
         do {
             progress?(IndexProgress(phase: "retrieve", completed: 0, total: 1))
-            try RetrievalIndexer(store: store, contentStore: contentStore)
-                .index(blobs: manifest.files.map(\.blob))
+            let blobs = manifest.files.map(\.blob)
+            try RetrievalIndexer(store: store, contentStore: contentStore).index(blobs: blobs)
+
+            // Semantic tier, when a model is installed. Chunking is
+            // cheap and model-independent, so it runs regardless and
+            // the vectors follow whenever an embedder appears — a
+            // repository indexed before the model was converted does
+            // not need re-chunking afterwards.
+            if let embedder = HybridSearch.embedder(workspace: directory) {
+                let semantic = SemanticIndexer(store: store, contentStore: contentStore,
+                                               embedder: embedder)
+                try semantic.chunk(blobs: blobs, repository: repoID)
+                progress?(IndexProgress(phase: "embed", completed: 0, total: 1))
+                let embedded = try await semantic.embedPending()
+                if embedded.vectorsEmbedded > 0 {
+                    FileHandle.standardError.write(
+                        Data("embedded \(embedded.vectorsEmbedded) chunks\n".utf8))
+                }
+            }
         } catch {
             FileHandle.standardError.write(Data("retrieval index skipped: \(error)\n".utf8))
         }
