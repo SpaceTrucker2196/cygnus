@@ -54,12 +54,16 @@ def main():
                         help="prepended to queries (e5 wants 'query: ')")
     parser.add_argument("--document-prefix", default="",
                         help="prepended to documents (e5 wants 'passage: ')")
+    parser.add_argument("--trust-remote-code", action="store_true",
+                        help="execute the model's own Python from the Hub. Required by "
+                             "models with custom architectures (jina-v2, nomic, codet5p) "
+                             "and off by default because it runs third-party code")
     arguments = parser.parse_args()
 
     try:
         import torch
         import coremltools as ct
-        from transformers import AutoModel, AutoTokenizer
+        from transformers import AutoConfig, AutoModel, AutoTokenizer
     except ImportError as error:
         die(f"missing dependency ({error}). "
             "pip install 'coremltools>=8.0' 'transformers>=4.40' torch")
@@ -68,8 +72,41 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     print(f"loading {arguments.model} …")
-    tokenizer = AutoTokenizer.from_pretrained(arguments.model)
-    model = AutoModel.from_pretrained(arguments.model, torchscript=True).eval()
+    tokenizer = AutoTokenizer.from_pretrained(
+        arguments.model, trust_remote_code=arguments.trust_remote_code)
+
+    # torchscript is a *config* flag, not a from_pretrained kwarg — it
+    # untangles tied weights and makes the model return plain tuples,
+    # both of which tracing needs.
+    config = AutoConfig.from_pretrained(
+        arguments.model, trust_remote_code=arguments.trust_remote_code)
+    config.torchscript = True
+
+    # Check BEFORE loading, not after. A custom architecture loaded as
+    # stock BERT is the worst outcome available here — conversion
+    # succeeds, vectors come out, and they mean the wrong thing — and
+    # in newer transformers it does not even get that far, failing on a
+    # config mismatch whose message says nothing about the real cause.
+    auto_map = getattr(config, "auto_map", None)
+    if auto_map and not arguments.trust_remote_code:
+        sources = sorted({value.split("--")[0] for value in auto_map.values()
+                          if "--" in value}) or [arguments.model]
+        die(f"{arguments.model} defines a custom architecture and cannot be loaded "
+            "as a stock one.\n\n"
+            f"  needs: {auto_map.get('AutoModel', 'custom code')}\n"
+            f"  code from: {', '.join(sources)}\n\n"
+            "Re-run with --trust-remote-code to execute that code from the Hub, or "
+            "choose a model with a stock architecture:\n"
+            "  --model BAAI/bge-base-en-v1.5          (768d, stock BERT, general purpose)\n"
+            "  --model sentence-transformers/all-MiniLM-L6-v2   (384d, small, general)\n\n"
+            "Executing Hub code is a supply-chain decision, which is why it is not "
+            "the default. Note the code above may come from a *different* repository "
+            "than the weights.")
+
+    model = AutoModel.from_pretrained(
+        arguments.model, config=config,
+        trust_remote_code=arguments.trust_remote_code).eval()
+    print(f"  architecture: {type(model).__name__}")
 
     width = arguments.max_tokens
     example = (torch.ones(1, width, dtype=torch.int32),
