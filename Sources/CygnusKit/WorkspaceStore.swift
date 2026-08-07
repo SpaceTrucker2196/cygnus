@@ -28,6 +28,11 @@ public final class WorkspaceStore {
     public enum ViewMode: String, CaseIterable, Sendable {
         case outline = "Outline"
         case flat = "Flat"
+        /// The molecular 3D view: groups become objects. Behind the
+        /// same renderer seam the removed RealityKit path used, and
+        /// gated by the perf budget S5 asked for — incremental layout,
+        /// instanced draw, paused when settled.
+        case molecular = "3D"
     }
     /// What the Flat graph charts. Symbols appears once a repo has
     /// reference enrichment (built with an index store).

@@ -143,6 +143,8 @@ struct ReadyContentView: View {
                 } else {
                     OutlineContainerView()
                 }
+            case .molecular:
+                MolecularGraphView(snapshot: snapshot)
             }
         }
         .toolbar {
@@ -156,7 +158,7 @@ struct ReadyContentView: View {
                 .accessibilityLabel("View mode")
                 .accessibilityIdentifier("detail.viewModePicker")
             }
-            if store.viewMode == .flat {
+            if store.viewMode == .flat || store.viewMode == .molecular {
                 ToolbarItem {
                     Picker("Content", selection: $store.graphContent) {
                         ForEach(WorkspaceStore.GraphContent.allCases, id: \.self) { mode in
