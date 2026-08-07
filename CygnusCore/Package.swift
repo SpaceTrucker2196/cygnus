@@ -118,7 +118,7 @@ let package = Package(
         // stdout progress can never corrupt the protocol stream.
         .target(name: "CygnusMCP", dependencies: [
             "CygnusGraph", "CygnusStore", "CygnusQuery", "CygnusRetrieval",
-            "CygnusProviders", "CygnusEngine",
+            "CygnusEmbed", "CygnusProviders", "CygnusEngine",
         ]),
 
         .executableTarget(name: "cygnus", dependencies: ["CygnusEngine", "CygnusStore", "CygnusQuery", "CygnusRetrieval", "CygnusGraph", "CygnusProviders"]),

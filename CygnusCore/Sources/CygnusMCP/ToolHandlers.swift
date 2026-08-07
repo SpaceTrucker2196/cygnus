@@ -3,6 +3,7 @@ import CygnusGraph
 import CygnusStore
 import CygnusQuery
 import CygnusRetrieval
+import CygnusEmbed
 import CygnusProviders
 import CygnusEngine
 
@@ -74,7 +75,10 @@ public struct ToolHandlers: Sendable {
             lines.append("\(repo.displayName): \(summary)")
         }
         lines.append("")
-        lines.append("semantic search: unavailable (not built yet — lexical and structural only)")
+        // Read the real availability rather than asserting a constant —
+        // an agent cannot reason about a degraded corpus it cannot see.
+        lines.append("semantic search: "
+            + EmbedderLocator.availability(workspace: await workspace.directory))
         return lines.joined(separator: "\n")
     }
 
@@ -173,15 +177,32 @@ public struct ToolHandlers: Sendable {
         }
         let limit = min(arguments["limit"]?.intValue ?? 10, 50)
         let prefix = arguments["path_prefix"]?.stringValue
-        let store = contentStore
-        let results = try await workspace.withStore { graph in
-            try LexicalSearch(store: graph, contentStore: store)
-                .search(query, repository: repo, pathPrefix: prefix, limit: limit)
+        let focus = arguments["focus"]?.arrayValue?.compactMap(\.stringValue) ?? []
+        let requested = arguments["mode"]?.stringValue
+            .flatMap(HybridSearch.Mode.init(rawValue:)) ?? .hybrid
+
+        // Asking for semantic when none exists is an error rather than
+        // a silent downgrade: the caller chose that mode for a reason.
+        let embedder = HybridSearch.embedder(workspace: await workspace.directory)
+        if requested == .semantic, embedder == nil {
+            return "Semantic search is unavailable — no embedding model is installed. "
+                + "Run tools/convert-embedder.py or set \(EmbedderLocator.environmentKey), "
+                + "or search with mode \"lexical\"."
         }
+
+        let store = contentStore
+        let outcome = try await workspace.withStore { graph in
+            HybridSearch(store: graph, contentStore: store, embedder: embedder)
+        }.search(query, mode: requested, repository: repo,
+                 pathPrefix: prefix, focus: focus, limit: limit)
+        let results = outcome.results
         guard !results.isEmpty else { return "No matches for \(query)." }
 
         var budget = TokenBudget(maxTokens: maxTokens)
-        budget.admitAlways("\(results.count) hit(s) for \(query)")
+        var header = "\(results.count) hit(s) for \(query) — \(outcome.modeUsed.rawValue)"
+        // Never substitute a weaker answer silently.
+        if let degraded = outcome.degraded { header += "\n(\(degraded))" }
+        budget.admitAlways(header)
         for result in results {
             let citation = "\(result.citation)  [\(result.layer.rawValue)/\(result.resolution.rawValue)]"
             let body = result.snippet.map { snippet in

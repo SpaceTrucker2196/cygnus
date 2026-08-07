@@ -680,3 +680,43 @@ MeowPassword has no factory at all; otter is missing its runbook;
 DF_Template is correctly not operational, being all placeholders.
 
 6 new tests (179 engine, 190 kit). `make test` exits 0.
+
+## 2026-08-06 — Tier 2 complete: hybrid search reaches the agent
+
+The last two gaps closed. The graph boost now has a supplier, and
+`mode` is wired through the MCP tool, so the semantic tier is reachable
+rather than Swift-only.
+
+- **`GraphBoost`** is where cross-file signal enters. It was
+  deliberately kept out of the embedding — a prefix mentioning other
+  files would make a chunk's vector depend on them and collapse
+  blob-keyed incrementality into transitive invalidation — so it
+  applies at rank time instead, where recomputing is free. Adjacency to
+  the caller's `focus` symbols (1 hop over `refersToSymbol` /
+  `references`) plus file centrality, reusing the same PageRank the
+  repo map uses so the two agree about importance. **This is the part
+  no text index and no embedding model can do: cygnus knows what calls
+  what.** Weights are deliberately below a first-place RRF score, so
+  the boost lifts near-misses and breaks ties without overruling a
+  result both retrievers already agree on.
+- **`HybridSearch`** runs lexical and semantic and fuses them. Hybrid
+  is the default because the two fail differently — one misses the
+  concept phrased in other words, the other misses the identifier you
+  already know.
+- **`cygnus_search` gained `mode` and `focus`.** `cygnus_status` now
+  reports real embedder availability instead of a hardcoded string that
+  had already gone stale.
+
+Degradation verified against the live server, all three paths:
+
+- `status` → `semantic search: unavailable (no model; set
+  CYGNUS_EMBED_MODEL or run tools/convert-embedder.py)`
+- `mode: semantic` with no model → an error naming the fix, not an
+  empty result. The caller chose that mode for a reason.
+- `mode: hybrid` with no model → runs lexical **and says so in the
+  header**. Falling back is fine; falling back silently is what makes
+  an agent confidently wrong.
+
+219 engine, 190 kit. `make test` exits 0. Still zero package
+dependencies — `Package.swift`'s `dependencies:` array has not changed
+once across the whole retrieval build.

@@ -131,7 +131,25 @@ public enum ToolCatalog {
                 numbers other cygnus tools return.
                 """,
             schema: schema(properties: [
-                "query": string("Text to search for."),
+                "query": string("Text to search for, or a question about what the code does."),
+                "mode": .object([
+                    "type": .string("string"),
+                    "enum": .array([.string("lexical"), .string("semantic"), .string("hybrid")]),
+                    "default": .string("hybrid"),
+                    "description": .string(
+                        "hybrid fuses text and meaning and is almost always right; "
+                        + "lexical for an exact identifier; semantic for a concept "
+                        + "whose wording you do not know. Semantic requires an "
+                        + "installed embedding model — check cygnus_status."),
+                ]),
+                "focus": .object([
+                    "type": .string("array"),
+                    "items": .object(["type": .string("string")]),
+                    "description": .string(
+                        "Symbols the task centres on. Results near them in the call "
+                        + "graph rank higher — this is what cygnus knows that a text "
+                        + "index cannot."),
+                ]),
                 "repo": repoArgument,
                 "path_prefix": string("Restrict to paths beginning with this, e.g. Sources/."),
                 "limit": integer("Maximum hits.", default: 10, max: 50),
