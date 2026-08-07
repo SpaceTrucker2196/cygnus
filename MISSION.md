@@ -64,3 +64,10 @@ crosses one of them is wrong even if it works.
 | swift-syntax | Swift extractor (source-level, no build needed) | 2026-07-19 — Apple/swiftlang first-party |
 | SwiftTreeSitter + tree-sitter-python, tree-sitter-c, tree-sitter-rust | Python/C/Rust extractors, error-tolerant parsing | 2026-07-19 (rust added 2026-07-25) — pinned exact grammar versions (rust 0.24.2); ABI churn is the known papercut |
 | indexstore-db | Reference/call-edge enrichment (optional provider; swift-syntax stays the baseline) | 2026-07-24 — swiftlang first-party, Apache-2.0; no semver, pinned by revision to the toolchain-matching swift-6.3.3-RELEASE tag; C++ core + libIndexStore dylib coupling is the known papercut (docs/spikes/indexstoredb.md) |
+
+**Runtime artifacts** — not code dependencies, and absent from
+`Package.resolved`, but third-party and therefore audited the same way.
+
+| artifact | purpose | audit |
+|---|---|---|
+| BAAI/bge-base-en-v1.5 (Core ML conversion) | semantic retrieval embeddings, 768d | 2026-08-07 — MIT (verified against the HuggingFace model API, not recalled). Weights are never committed; converted locally by `tools/convert-embedder.py` and located at runtime, so the tier reports `unavailable` rather than failing when absent. Converted artifact sha256 `ef78523e…01f4` (coremltools 8.3.0, torch 2.5.0); the model id embeds that hash, so a re-conversion with different settings cannot silently mix embedding spaces. General-purpose rather than code-tuned — the quality gap on identifier-dense code is real and unmeasured here (DECISIONS.md D12). |
