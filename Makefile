@@ -16,7 +16,7 @@ PREFIX ?= $(HOME)/.local
 RELEASE := CygnusCore/.build/release
 
 .PHONY: all generate build test test-engine test-kit test-app clean \
-        mcp install-mcp index-factory
+        mcp install-mcp index-factory embedder
 
 all: generate build
 
@@ -76,6 +76,11 @@ FACTORY_REPOS ?= \
 	$(HOME)/projects/otter \
 	$(HOME)/projects/henge \
 	$(HOME)/projects/DF_Template
+
+# One-time: download and convert the embedding model that turns on
+# semantic search. Everything else works without it.
+embedder:
+	./tools/setup-embedder.sh
 
 clean:
 	rm -rf .build CygnusCore/.build DerivedData $(PROJECT)

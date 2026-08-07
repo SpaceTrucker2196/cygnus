@@ -52,7 +52,25 @@ few files that must sit at the repo root — the tooling looks there.)
 workspace the CLI does, so `make index-factory` and the server always
 agree about what is indexed.
 
-Nine tools: `status`, `repo_map`, `search`, `find_definition`,
+### Semantic search (optional)
+
+```
+make embedder          # one-time: venv, model download, Core ML convert
+./tools/setup-embedder.sh --dry-run   # see what it would download first
+```
+
+~2–4 GB of downloads (torch is most of it) and a few minutes. The venv
+is scratch; only the converted model under the workspace's `models/`
+directory matters at runtime. Needs Python 3.10–3.12 — coremltools has
+no wheels for the newest CPython, and the script picks a compatible
+interpreter rather than failing halfway through the install.
+
+Everything else works without it: absent a model the semantic tier
+reports `unavailable`, `mode: hybrid` runs lexical and says so, and
+`mode: semantic` returns an error naming the fix.
+
+Twelve tools: `status`, `factory_audit`, `prior_decisions`, `repo_map`,
+`search` (`mode: lexical|semantic|hybrid`), `find_definition`,
 `find_references`, `callers_of`, `blast_radius`, `list_symbols`,
 `read_span`. Design and the token-budget contract live in
 `docs/wiki/retrieval.md`.
