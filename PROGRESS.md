@@ -761,3 +761,51 @@ Shipped model is `bge-base-en-v1.5@af12d754` (768d) — general-purpose,
 not code-tuned. jina gets further with export but fails on tensor
 subclasses in its custom ALiBi code. The quality gap is real and
 unmeasured; recorded as D12.
+
+## 2026-08-07 — Semantic search verified, after shipping 14,838 NaN vectors
+
+It works now, and the way it failed first is the part worth keeping.
+
+**Every vector was NaN and nothing said so.** The first working
+conversion used FLOAT16. Transformers masks padded positions by adding
+the dtype minimum before the softmax; in half precision that overflows
+to `-inf` and the softmax returns NaN. Conversion succeeded, the model
+loaded, 14,838 vectors were computed, stored and indexed, and search
+ran without error. The demo that "proved" it worked —
+`EmbedderLocator.swift` for a query about turning text into numbers —
+was coincidence: every score was NaN, so ranking fell back to row id
+and returned whatever sorted first.
+
+It surfaced only because two unrelated queries returned *byte-identical*
+results. Had the answers merely looked mediocre, the conclusion would
+have been "the general-purpose model is weak on code" — a plausible
+story that would have buried it indefinitely. The single conversion
+warning, `RuntimeWarning: overflow encountered in cast`, is
+indistinguishable from the dozens of benign ones.
+
+Fixed by converting at FLOAT32 (roughly double the model size, against
+silently meaningless retrieval), and by making the converter prove its
+own output: embed two texts, require finite vectors that differ.
+Measured on the float32 build — finite, unrelated-text cosine 0.580.
+
+Two more bugs of the same family, both producing results rather than
+errors: queries were embedded as *documents* (`embedQuery` existed and
+nothing called it, so an asymmetric model put them in the wrong region
+of the space), and bge shipped with no query instruction.
+
+**Verified after re-embedding** — 14,890 chunks, 14,890 vectors, 200
+sampled all finite, unit norm, pairwise cosine 0.537–0.939:
+
+| query | top hit |
+|---|---|
+| stop the program from using too much memory | `cygnus/…/MemoryGovernor.swift` |
+| how are passwords kept safe | `sloth/src/cleartext_creds.h` |
+| parsing a makefile into build targets | `cygnus/…/MakefileRules.swift` |
+
+None of those queries shares an identifier with what it found, and the
+second one crosses repositories.
+
+The lesson, recorded as D13: **a step that reports success without
+checking its output is not finished.** Two of today's three long
+detours — this and the `torch.jit.trace` hunt — would have been minutes
+instead of hours with one round of instrumentation up front.
