@@ -91,7 +91,10 @@ public struct SemanticSearch: Sendable {
 
     public func search(_ query: String, repository: RepositoryID? = nil,
                        limit: Int = 10) async throws -> [RetrievalResult] {
-        let embedded = try await embedder.embed(query)
+        // embedQuery, not embed: asymmetric models put a query in a
+        // different region of the space than a passage, and using the
+        // document path yields results that are plausible and wrong.
+        let embedded = try await embedder.embedQuery(query)
         guard embedded.count == embedder.identity.dimension else { return [] }
         let hits = try await vectors.search(vector: VectorMath.normalized(embedded),
                                             limit: limit, repository: repository)

@@ -53,7 +53,7 @@ public actor CoreMLEmbedder: TextEmbedder {
     /// families disagree about these strings, and using the wrong one
     /// measurably degrades recall — which is why they are shipped as
     /// data beside the weights rather than hardcoded.
-    public func embedQuery(_ text: String) throws -> [Float] {
+    public func embedQuery(_ text: String) async throws -> [Float] {
         try embedOne(descriptor.queryPrefix + text)
     }
 

@@ -24,6 +24,7 @@ it happened.
 | D10 | 2026-08-06 | sloth is the reference instance; the audit is validated against it | adopted | CygnusCore/Tests/RetrievalTests/SlothPatternTests.swift | — |
 | D11 | 2026-08-07 | Core ML conversion blocked on coremltools 9 / torch 2.7 | superseded | — | — |
 | D12 | 2026-08-07 | Convert with torch.export, never torch.jit.trace | adopted | tools/convert-embedder.py; bge-base converts, jina does not | D11 |
+| D13 | 2026-08-07 | Convert at FLOAT32, and validate the artifact before shipping it | adopted | 14,838 NaN vectors shipped silently | — |
 
 ## D1 — dead-code detection, refused
 
@@ -86,6 +87,35 @@ than left implicit.
 **What would change this.** A macOS or Xcode release where a SwiftUI
 app launched by XCUITest presents its window — retest with a throwaway
 target before reinstating.
+
+## D13 — float32, and validate the conversion, adopted
+
+**Decision.** Convert at `FLOAT32`, and make the converter prove the
+model works before declaring success.
+
+**What happened.** The first working conversion used `FLOAT16`.
+Transformers masks padded positions by adding the dtype's minimum value
+before the softmax; in float16 that constant overflows to `-inf`, the
+softmax returns `NaN`, and **every embedding the model produces is
+NaN**. The conversion succeeded. The model loaded. 14,838 vectors were
+computed, stored and indexed. Search ran without error.
+
+It surfaced only because two unrelated queries returned *identical*
+results — every score was NaN, so ranking fell back to row id. Had the
+results merely looked mediocre, this would have shipped, and the
+conclusion would have been "the general-purpose model is weak on code"
+rather than "every vector is garbage". The one warning emitted during
+conversion, `RuntimeWarning: overflow encountered in cast`, is
+indistinguishable from the dozens of benign ones.
+
+**The rule.** A converter that reports success without checking its
+output is not finished. `_validate` now embeds two texts and requires
+the vectors to be finite and to differ — the cheapest possible check,
+and it catches exactly this. Measured on the float32 build: finite,
+unrelated-text cosine 0.580.
+
+**Cost.** Roughly double the model size. Against silently meaningless
+retrieval, that is not a trade worth having.
 
 ## D12 — torch.export, not torch.jit.trace, adopted
 

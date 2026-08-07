@@ -157,10 +157,19 @@ def main():
     # supporting those models at all.
     # Input names and shapes come from the exported program, so they do
     # not need restating here.
+    # FLOAT32, not FLOAT16.
+    #
+    # Transformers masks padded positions by adding the dtype's minimum
+    # value before the softmax. In float16 that constant overflows to
+    # -inf, the softmax returns NaN, and every embedding the model
+    # produces is NaN — silently. The vectors still store, the search
+    # still runs, and every score is NaN, so results come back ordered
+    # by row id and look merely bad rather than broken. Half the model
+    # size is not worth that failure mode.
     converted = ct.convert(
         exported,
         minimum_deployment_target=ct.target.macOS15,
-        compute_precision=ct.precision.FLOAT16,
+        compute_precision=ct.precision.FLOAT32,
     )
 
     package = out / "model.mlpackage"
@@ -202,12 +211,57 @@ def main():
     }
     (out / "descriptor.json").write_text(json.dumps(descriptor, indent=2) + "\n")
 
+    print("validating …")
+    _validate(out, descriptor, tokenizer)
+
     print(f"\nwrote {out}")
     print(f"  model  {descriptor['name']} ({descriptor['dimension']}d, {width} tokens)")
     print(f"  id     {descriptor['name']}@{sha[:8]}")
     print("\nRecord this in MISSION.md §5 (licence, source, sha256) and "
           "PROGRESS.md before relying on it — the weights are a "
           "third-party artifact even though they are not a code dependency.")
+
+
+def _validate(out, descriptor, tokenizer):
+    """Prove the converted model produces usable vectors.
+
+    Without this a broken conversion ships silently: NaN embeddings
+    store fine, search runs fine, every score is NaN, and results come
+    back ordered by row id — which reads as a mediocre model rather
+    than a broken one. Two checks catch it: vectors must be finite, and
+    two different texts must not produce the same vector.
+    """
+    import coremltools as ct
+    import numpy as np
+
+    model = ct.models.MLModel(str(out / "model.mlpackage"))
+    width = descriptor["maxTokens"]
+
+    def embed(text):
+        encoded = tokenizer(text, padding="max_length", truncation=True,
+                            max_length=width, return_tensors="np")
+        feed = {"input_ids": encoded["input_ids"].astype(np.int32),
+                "attention_mask": encoded["attention_mask"].astype(np.int32)}
+        if "token_type_ids" in encoded:
+            feed["token_type_ids"] = encoded["token_type_ids"].astype(np.int32)
+        hidden = list(model.predict(feed).values())[0]
+        mask = encoded["attention_mask"][0][:, None]
+        pooled = (hidden[0] * mask).sum(0) / max(mask.sum(), 1)
+        norm = np.linalg.norm(pooled)
+        return pooled / norm if norm else pooled
+
+    first = embed("a function that limits how much memory is used")
+    second = embed("parsing a configuration file from disk")
+
+    if not np.all(np.isfinite(first)):
+        die("the converted model produces non-finite embeddings (NaN or inf). "
+            "This is usually float16 overflow in the attention mask — convert at "
+            "FLOAT32.")
+    similarity = float(np.dot(first, second))
+    if similarity > 0.999:
+        die(f"two unrelated texts embed almost identically (cos={similarity:.4f}); "
+            "the model is not discriminating and the conversion is wrong.")
+    print(f"  finite: yes  |  unrelated-text similarity: {similarity:.3f}")
 
 
 if __name__ == "__main__":

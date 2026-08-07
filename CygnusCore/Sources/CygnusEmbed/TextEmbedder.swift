@@ -34,13 +34,27 @@ public struct EmbedderIdentity: Sendable, Hashable {
 public protocol TextEmbedder: Sendable {
     var identity: EmbedderIdentity { get }
 
-    /// Embed a batch. Returns L2-normalized vectors in input order, so
-    /// cosine similarity collapses to a dot product downstream.
+    /// Embed documents. Returns L2-normalized vectors in input order,
+    /// so cosine similarity collapses to a dot product downstream.
     func embed(_ texts: [String]) async throws -> [[Float]]
+
+    /// Embed a **query**, which is not the same operation.
+    ///
+    /// Asymmetric models — bge, e5, gte — are trained with different
+    /// instructions on each side, and embedding a query as though it
+    /// were a passage puts it in a different region of the space. The
+    /// results are not empty, which is what makes this dangerous: they
+    /// are plausible and wrong. Defaults to `embed` for symmetric
+    /// models, where the two really are the same.
+    func embedQuery(_ text: String) async throws -> [Float]
 }
 
 extension TextEmbedder {
     public func embed(_ text: String) async throws -> [Float] {
+        try await embed([text]).first ?? []
+    }
+
+    public func embedQuery(_ text: String) async throws -> [Float] {
         try await embed([text]).first ?? []
     }
 }
